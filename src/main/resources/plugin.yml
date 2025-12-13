@@ -1,0 +1,13 @@
+name: CTC
+version: '${version}'
+main: org.macl.ctc.Main
+api-version: '1.21'
+depend:
+  - HologramLib
+commands:
+  ctc:
+    description: CTC Commands
+    usage: /<command>
+  stats:
+    description: Show your CTC stats
+    usage: /stats
