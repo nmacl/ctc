@@ -65,7 +65,7 @@ public class Grandpa extends Kit {
                 airLaunchModifier = 0.2;
             } else {
                 Vector r = dir.multiply((airLaunchModifier));
-                r.setY(r.getY() * 1.25);
+                r.setY(r.getY() * 1.2);
                 p.setVelocity(p.getVelocity().add(r));
             }
 
