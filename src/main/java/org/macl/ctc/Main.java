@@ -297,7 +297,6 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
 
         // 2) Spawn the visual/ambient explosion
         world.createExplosion(center, 2f, fire, breaksBlocks);
-        Bukkit.broadcastMessage("[DEBUG] Explosion at " + center);
 
         // 3) Prepare ray-trace heights
         final int numberOfRays = 6;
@@ -316,14 +315,12 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
 
             // 4b) Skip same-team if we're not supposed to damage allies
             if (!damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
-                Bukkit.broadcastMessage("[DEBUG] Skipping ally: " + target.getName());
                 continue;
             }
 
             // 4c) Distance check
             double distance = center.distance(target.getLocation());
             if (distance > maxDistance) {
-                Bukkit.broadcastMessage("[DEBUG] Out of range: " + target.getName() + " @ " + String.format("%.2f", distance));
                 continue;
             }
 
@@ -344,21 +341,14 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
                 }
             }
 
-            Bukkit.broadcastMessage("[DEBUG] Rays hit on " + target.getName() + ": " + raysHit + "/" + numberOfRays);
 
             if (raysHit == 0) {
-                Bukkit.broadcastMessage("[DEBUG] " + target.getName() + " is fully protected by obstacles.");
                 continue;
             }
 
             // 6) If any rays got through, apply proportional damage
             double damageFactor = (double) raysHit / numberOfRays;
             double damage = maxDamage * (1 - (distance / maxDistance)) * damageFactor;
-            Bukkit.broadcastMessage("[DEBUG] Calculated damage for " + target.getName()
-                    + ": base=" + maxDamage
-                    + ", dist=" + String.format("%.2f", distance)
-                    + ", factor=" + String.format("%.2f", damageFactor)
-                    + " => damage=" + String.format("%.2f", damage));
             double newHealth = target.getHealth() - damage;
 
             combatTracker.setHealth(target, newHealth, p, ability);

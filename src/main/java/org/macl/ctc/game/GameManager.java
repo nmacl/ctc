@@ -30,12 +30,14 @@ public class GameManager {
     public boolean started = false;
     public boolean starting = false;
     private BukkitTask lobby;
+    private BukkitTask gameTimer; // Game time limit timer
 
     private Main main;
     private WorldManager world;
     private KitManager kit;
 
     public int center = 0;
+    public int timeRemaining = 3600; // 1 hour in seconds (60 * 60)
 
     public int redCoreHealth = 3; // Number of times the red core needs to be mined
     public int blueCoreHealth = 3; // Number of times the blue core needs to be mined
@@ -136,6 +138,114 @@ public class GameManager {
         // Initialize the scoreboard
         updateScoreboard(0, 0);
         center = 0;
+
+        // Start the game timer (1 hour)
+        timeRemaining = 3600; // Reset to 1 hour
+        startGameTimer();
+    }
+
+    /**
+     * Starts the 1-hour game timer that counts down every second
+     */
+    private void startGameTimer() {
+        gameTimer = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!started) {
+                    this.cancel();
+                    return;
+                }
+
+                timeRemaining--;
+
+                // Update scoreboard every second
+                int redCount = 0, blueCount = 0;
+                for (Location loc : world.getCenter()) {
+                    Block b = loc.getWorld().getBlockAt(loc);
+                    if      (b.getType() == Material.RED_WOOL)  redCount++;
+                    else if (b.getType() == Material.BLUE_WOOL) blueCount++;
+                }
+                updateScoreboard(redCount, blueCount);
+
+                // Warnings at specific time marks
+                if (timeRemaining == 600) { // 10 minutes left
+                    main.broadcast(ChatColor.YELLOW + "⏰ 10 minutes remaining!");
+                } else if (timeRemaining == 300) { // 5 minutes left
+                    main.broadcast(ChatColor.GOLD + "⏰ 5 minutes remaining!");
+                } else if (timeRemaining == 60) { // 1 minute left
+                    main.broadcast(ChatColor.RED + "⏰ 1 MINUTE REMAINING!");
+                } else if (timeRemaining == 30 || timeRemaining == 10) {
+                    main.broadcast(ChatColor.RED + "⏰ " + timeRemaining + " seconds remaining!");
+                } else if (timeRemaining <= 5 && timeRemaining > 0) {
+                    main.broadcast(ChatColor.DARK_RED + "⏰ " + timeRemaining + "...");
+                }
+
+                // Time's up - end game
+                if (timeRemaining <= 0) {
+                    this.cancel();
+                    timeUp();
+                }
+            }
+        }.runTaskTimer(main, 20L, 20L); // Run every second
+    }
+
+    /**
+     * Called when the 1-hour time limit expires
+     */
+    private void timeUp() {
+        main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+        main.broadcast(ChatColor.DARK_RED + "⏰ TIME'S UP!");
+        main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+
+        // Determine winner based on core health
+        Player winner = null;
+        if (redCoreHealth > blueCoreHealth) {
+            main.broadcast(ChatColor.RED + "Red team wins with more core health!", ChatColor.RED);
+            // Pick a random red player to credit the win
+            if (!getReds().isEmpty()) {
+                winner = getReds().get(0);
+            }
+        } else if (blueCoreHealth > redCoreHealth) {
+            main.broadcast(ChatColor.BLUE + "Blue team wins with more core health!", ChatColor.BLUE);
+            // Pick a random blue player to credit the win
+            if (!getBlues().isEmpty()) {
+                winner = getBlues().get(0);
+            }
+        } else {
+            main.broadcast(ChatColor.GRAY + "It's a tie! Both teams have equal core health!", ChatColor.GRAY);
+            main.broadcast(ChatColor.GRAY + "No winner this round.", ChatColor.GRAY);
+        }
+
+        // End the game
+        if (winner != null) {
+            stop(winner);
+        } else {
+            // Tie - just restart without winner
+            started = false;
+            starting = false;
+            broadcastLiveGameAwards();
+
+            // Save stats
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                main.getStats().savePlayer(p.getUniqueId());
+            }
+
+            // Restart server
+            new BukkitRunnable() {
+                @Override public void run() {
+                    main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                    main.broadcast("Server restarting for next game...", ChatColor.YELLOW);
+                    main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                }
+            }.runTaskLater(main, 60L);
+
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    Bukkit.shutdown();
+                }
+            }.runTaskLater(main, 100L);
+        }
     }
 
     private void setup(Player p) {
@@ -239,6 +349,12 @@ public class GameManager {
     public void stop(Player stopper) {
         started  = false;
         starting = false;
+
+        // Cancel game timer
+        if (gameTimer != null) {
+            gameTimer.cancel();
+            gameTimer = null;
+        }
 
         boolean redWin = redHas(stopper);
         Collection<Player> winners = redWin ? getReds() : getBlues();
@@ -712,16 +828,29 @@ public class GameManager {
         String centerStatus = ChatColor.GREEN + "Center Control:";
         String centerControl = centerString(redCount, blueCount);
 
-        // Set scores with center control first, and core health below
-        objective.getScore(" ").setScore(8); // Blank line for spacing
-        objective.getScore(centerStatus).setScore(7);
-        objective.getScore(centerControl).setScore(6);
-        objective.getScore("  ").setScore(5); // Another blank line
-        objective.getScore(coreHealthHeader).setScore(4);
-        objective.getScore(blueCore).setScore(3);
-        objective.getScore(redCore).setScore(2);
-        objective.getScore("   ").setScore(1); // Blank line before IP
+        // Add time remaining display
+        String timeDisplay = ChatColor.YELLOW + "Time: " + formatTime(timeRemaining);
+
+        // Set scores: center control, core health, time, then IP
+        objective.getScore(" ").setScore(9); // Blank line for spacing
+        objective.getScore(centerStatus).setScore(8);
+        objective.getScore(centerControl).setScore(7);
+        objective.getScore("  ").setScore(6); // Blank line
+        objective.getScore(coreHealthHeader).setScore(5);
+        objective.getScore(blueCore).setScore(4);
+        objective.getScore(redCore).setScore(3);
+        objective.getScore("   ").setScore(2); // Blank line before IP
+        objective.getScore(timeDisplay).setScore(1);
         objective.getScore(ChatColor.GOLD + "" + ChatColor.BOLD + "playctc.co").setScore(0); // Server IP
+    }
+
+    /**
+     * Formats time in seconds to MM:SS format
+     */
+    private String formatTime(int seconds) {
+        int minutes = seconds / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d", minutes, secs);
     }
 
     // Override method that only updates the core health

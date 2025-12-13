@@ -392,6 +392,14 @@ public class Players extends DefaultListener {
     }
 
     @EventHandler
+    public void onArrowShoot(ProjectileLaunchEvent event) {
+        if (event.getEntity() instanceof SpectralArrow) {
+            SpectralArrow arrow = (SpectralArrow) event.getEntity();
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        }
+    }
+
+    @EventHandler
     public void hatching(ThrownEggHatchEvent event) {
         event.setHatching(false);
     }
@@ -408,16 +416,19 @@ public class Players extends DefaultListener {
         else if (main.game.blueHas(p)) teamSpawn = world.getBlue();
         else                            teamSpawn = Bukkit.getWorld("world").getSpawnLocation();
 
-        // 2) Set that as the respawn point (this happens *before* the player actually appears)
+        // 2) Calculate distance-based respawn timer
+        int respawnTime = calculateRespawnTime(p, teamSpawn);
+
+        // 3) Set that as the respawn point (this happens *before* the player actually appears)
         event.setRespawnLocation(teamSpawn);
 
-        // 3) One tick later, put them into Spectator and start the 8s countdown
+        // 4) One tick later, put them into Spectator and start the countdown
         Bukkit.getScheduler().runTaskLater(main, () -> {
             p.setGameMode(GameMode.SPECTATOR);
 
-            // 4) Countdown runnable: after 8s, back to Survival
+            // 5) Countdown runnable: after calculated time, back to Survival
             new BukkitRunnable() {
-                int timer = 8;
+                int timer = respawnTime;
                 @Override
                 public void run() {
                     if (!p.isOnline()) { cancel(); return; }
@@ -430,13 +441,50 @@ public class Players extends DefaultListener {
                         main.kit.openMenu(p);
                         cancel();
                     } else {
-                        // show a little “respawning in Xs” subtitle
+                        // show a little "respawning in Xs" subtitle
                         p.sendTitle("", ChatColor.YELLOW + "Respawning in " + (timer-1) + "s", 0, 20, 0);
                         timer--;
                     }
                 }
             }.runTaskTimer(main, 20L, 20L);
         }, 1L);
+    }
+
+    /**
+     * Calculate respawn time based on distance from player's core.
+     * - Die at your core: 12s (max penalty)
+     * - Die at center/beyond: 6s (min penalty)
+     * - Linear scaling in between
+     */
+    private int calculateRespawnTime(Player p, Location teamSpawn) {
+        final int MIN_RESPAWN = 6;  // Die far from core (quick respawn)
+        final int MAX_RESPAWN = 12; // Die near core (slow respawn)
+
+        Location deathLoc = p.getLocation();
+
+        // If no center defined, use default 8s
+        if (world.center == null || world.center.isEmpty()) {
+            return 8;
+        }
+
+        Location centerLoc = world.center.get(0); // First center point
+
+        // Calculate distances
+        double distanceFromCore = deathLoc.distance(teamSpawn);
+        double coreToCenter = teamSpawn.distance(centerLoc);
+
+        // Cap distance at center (don't reward dying beyond center)
+        if (distanceFromCore > coreToCenter) {
+            distanceFromCore = coreToCenter;
+        }
+
+        // Calculate respawn time (inverse relationship: far = short, close = long)
+        // Formula: respawnTime = MAX - (distance / maxDistance) * (MAX - MIN)
+        double ratio = distanceFromCore / coreToCenter; // 0.0 (at core) to 1.0 (at center)
+        int respawnTime = (int) Math.round(MAX_RESPAWN - (ratio * (MAX_RESPAWN - MIN_RESPAWN)));
+
+        // Clamp between min and max (safety check)
+        return Math.max(MIN_RESPAWN, Math.min(MAX_RESPAWN, respawnTime));
     }
 
 

@@ -49,7 +49,8 @@ public class CombatTracker {
             entry("Spectral Arrow", "%victim% got frostbite from %killer%'s frozen arrow"),
             entry("Sword", "%victim% got slashed by %killer%"),
             entry("Shovel", "%killer% dug up %victim%"),
-            entry("Hoe", "%killer% poisoned %victim% with a hoe")
+            entry("Hoe", "%killer% poisoned %victim% with a hoe"),
+            entry("chainsaw", "%killer% has sawed %victim% in half using Chain-Axe")
     );
 
     private record Hit(UUID attackerId, String attackerName, String ability, double amount, long ts) {}

@@ -60,14 +60,14 @@ public class Grandpa extends Kit {
             bullet.setVelocity(dir.multiply(1.6));
 
             // knockback
-            double airLaunchModifier = -0.2;
-            if (!p.isOnGround()) {
-                airLaunchModifier = -1.15;
+            double airLaunchModifier = -1.05;
+            if (p.isOnGround()) {
+                airLaunchModifier = 0.2;
+            } else {
+                Vector r = dir.multiply((airLaunchModifier));
+                r.setY(r.getY() * 1.25);
+                p.setVelocity(p.getVelocity().add(r));
             }
-
-            Vector r = dir.multiply((airLaunchModifier));
-            r.setY(r.getY() * 1.2);
-            p.setVelocity(p.getVelocity().add(r));
 
             fallImmune = true;
 
