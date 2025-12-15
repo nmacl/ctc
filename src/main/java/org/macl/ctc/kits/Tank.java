@@ -245,95 +245,156 @@ public class Tank extends Kit {
 
     }
 
-    int time = 0;
 
-    boolean inHellfire = false;
-    Location previousLoc = null;
+    // Hellfire state
+    private boolean hellfirePending = false;
+    private boolean inHellfire = false;
 
-    int count = 0;
+    // Where to return after hellfire
+    private Location hellfireReturnLoc = null;
+
+    // Track tasks so we can cancel + cleanup safely
+    private BukkitTask hellfireEffectTask = null;
+    private BukkitTask hellfireTeleportTask = null;
+    private BukkitTask hellfireFallTask = null;
 
     private Material savedBlockType = null;
 
+    @Override
+    public void cancelAllTasks() {
+        super.cancelAllTasks();
+        endHellfire(true, "cancelAllTasks()");
+    }
+
     public void hellfire() {
-        if (inHellfire || isOnCooldown("hellfire"))
-            return;
-        previousLoc      = p.getLocation();  // already there
-        savedBlockType   = previousLoc.clone().add(0, -1, 0).getBlock().getType();  // NEW
-        // Task: spawn Hellfire particles above player
-        BukkitTask hellfireEffectTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                count++;
-                if (count == 15) {
+        if (inHellfire || hellfirePending || isOnCooldown("hellfire")) return;
+
+        if (p == null || !p.isOnline() || p.isDead()) return;
+
+        // snapshot return location ONCE (important)
+        hellfireReturnLoc = p.getLocation().clone();
+
+        hellfirePending = true;
+        setCooldown("hellfire", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+        p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, 5f, 1f);
+
+        // visual pre-charge (local counter so it can't bleed)
+        hellfireEffectTask = new BukkitRunnable() {
+            int ticks = 0;
+            @Override public void run() {
+                if (!p.isOnline() || p.isDead()) {
+                    endHellfire(false, "player offline/dead during charge");
+                    return;
+                }
+                if (++ticks >= 15) {
                     this.cancel();
-                    count = 0;
+                    hellfireEffectTask = null;
+                    return;
                 }
                 p.getWorld().spawnParticle(Particle.DRIPPING_LAVA, p.getLocation(), 20);
             }
         }.runTaskTimer(main, 0L, 1L);
         registerTask(hellfireEffectTask);
 
-        p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, 5f, 1f);
-        setCooldown("hellfire", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
-        inHellfire = true;
-        previousLoc = p.getLocation();
+        // compute target location
+        World w = p.getWorld();
+        double targetY = Math.min(hellfireReturnLoc.getY() + 120, w.getMaxHeight() - 2);
+        Location target = hellfireReturnLoc.clone();
+        target.setY(targetY);
 
-        World  w       = p.getWorld();
-        double targetY = Math.min(previousLoc.getY() + 120, w.getMaxHeight() - 2);
-        Location ps    = previousLoc.clone();
-        ps.setY(targetY);
-        ps.getChunk().load();   // make sure the chunk exists
+        // schedule teleport
+        hellfireTeleportTask = new BukkitRunnable() {
+            @Override public void run() {
+                hellfireTeleportTask = null;
 
-        BukkitTask hellfireTeleportTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                boolean ok = p.teleport(ps, PlayerTeleportEvent.TeleportCause.PLUGIN);
-                main.getLogger().info("[Hellfire] teleported=" + ok + "  targetY=" + ps.getY());
-                p.setRotation(0, 90);
+                if (!p.isOnline() || p.isDead()) {
+                    endHellfire(false, "player offline/dead before teleport");
+                    return;
+                }
+
+                // make sure chunk is loaded
+                target.getChunk().load();
+
+                boolean ok = p.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN);
+                main.getLogger().info("[Hellfire] teleported=" + ok + " targetY=" + target.getY());
+
+                if (!ok) {
+                    endHellfire(false, "teleport failed/cancelled");
+                    return;
+                }
+
+                // now we are truly in hellfire
+                hellfirePending = false;
+                inHellfire = true;
+
                 p.setInvulnerable(true);
+                p.setRotation(0, 90);
 
-                // Task: handle fall, auto-explosion on proximity, and timed explosion
-                BukkitTask hellfireFallTask = new BukkitRunnable() {
-                    @Override
-                    public void run() {
-                        // Auto-explode if any other player is very close
+                // fall task (local timer so it can't bleed)
+                hellfireFallTask = new BukkitRunnable() {
+                    int t = 0;
+
+                    @Override public void run() {
+                        if (!p.isOnline() || p.isDead()) {
+                            endHellfire(false, "player offline/dead mid-flight");
+                            return;
+                        }
+
+                        // explode if close to any other player
                         for (Entity ent : p.getWorld().getNearbyEntities(p.getLocation(), 2, 2, 2)) {
-                            if (ent instanceof Player && !ent.equals(p)) {
+                            if (ent instanceof Player other && !other.equals(p) && other.getGameMode() != GameMode.SPECTATOR) {
                                 main.fakeExplode(p, p.getLocation(), 15, 10, false, false, true, "hellfire");
                                 p.getWorld().createExplosion(p.getLocation(), 2f, false, true);
-                                p.setInvulnerable(false);
-                                p.teleport(previousLoc);        // go back to ground
-                                p.setFallDistance(0f);          // clear any pending fall
-                                p.setInvulnerable(false);
-                                previousLoc = null;
-                                inHellfire = false;
-                                this.cancel();
+                                endHellfire(true, "proximity explode");
                                 return;
                             }
                         }
 
-                        time++;
-                        if (time > 20 * 25 || (p.getFallDistance() == 0 && time > 80)) {
+                        t++;
+
+                        // stop conditions: timeout OR landed for a bit
+                        if (t > 20 * 25 || (p.getFallDistance() == 0 && t > 80)) {
                             main.fakeExplode(p, p.getLocation(), 15, 10, false, false, true, "hellfire");
                             p.getWorld().createExplosion(p.getLocation(), 2f, false, true);
-                            p.setInvulnerable(false);
-                            p.teleport(previousLoc);
-                            previousLoc = null;
-                            inHellfire = false;
-                            this.cancel();
-                            time = 0;
-                        } else {
-                            p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10);
-                            p.setVelocity(p.getLocation().getDirection().multiply(1.9));
-                            p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_SHOOT, 5f, 0.5f);
+                            endHellfire(true, "timed/landed explode");
+                            return;
                         }
+
+                        // flight visuals
+                        p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10);
+                        p.setVelocity(p.getLocation().getDirection().multiply(1.9));
+                        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_SHOOT, 5f, 0.5f);
                     }
                 }.runTaskTimer(main, 0L, 1L);
+
                 registerTask(hellfireFallTask);
             }
         }.runTaskLater(main, 8L);
         registerTask(hellfireTeleportTask);
     }
+    private void endHellfire(boolean teleportBack, String reason) {
+        // cancel tasks (safe even if already cancelled)
+        if (hellfireEffectTask != null) { hellfireEffectTask.cancel(); hellfireEffectTask = null; }
+        if (hellfireTeleportTask != null) { hellfireTeleportTask.cancel(); hellfireTeleportTask = null; }
+        if (hellfireFallTask != null) { hellfireFallTask.cancel(); hellfireFallTask = null; }
+
+        hellfirePending = false;
+        inHellfire = false;
+
+        if (p != null && p.isOnline()) {
+            p.setInvulnerable(false);
+            p.setFallDistance(0f);
+
+            if (teleportBack && hellfireReturnLoc != null) {
+                p.teleport(hellfireReturnLoc, PlayerTeleportEvent.TeleportCause.PLUGIN);
+            }
+        }
+
+        hellfireReturnLoc = null;
+
+        main.getLogger().info("[Hellfire] end reason=" + reason);
+    }
+
     public void exit() {
         setCooldown("gatling", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
 

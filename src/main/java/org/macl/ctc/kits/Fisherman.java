@@ -82,7 +82,8 @@ public class Fisherman extends Kit {
                         double airborneDamage = target.isOnGround() ? 0 : 2;
                         // first drop them near-zero but never kill
                         main.combatTracker.setHealth(target, target.getHealth() - (6 + airborneDamage), p, "cod sniper");
-
+                        target.playHurtAnimation(0);
+                        target.playSound(target.getLocation(), Sound.ENTITY_PLAYER_HURT, 1, 1);
 
                         p.getWorld().playSound(target.getLocation(),
                                 Sound.BLOCK_BELL_USE, 1f, 1f);

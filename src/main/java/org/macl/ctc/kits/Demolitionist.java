@@ -70,6 +70,12 @@ public class Demolitionist extends Kit {
         }
 
         public void run() {
+            // Check if sheep is still valid/alive
+            if (!sheep.isValid() || sheep.isDead()) {
+                this.cancel();
+                return;
+            }
+
             timer++;
             for(org.bukkit.entity.Entity e : sheep.getNearbyEntities(50, 50, 50)) {
                 if(e instanceof Player) {
@@ -94,10 +100,10 @@ public class Demolitionist extends Kit {
             if(timer == 80)
                 sheep.setColor(DyeColor.BLACK);
             if(timer == 100) {
+                this.cancel();
+                sheep.remove();
                 main.fakeExplode(p, sheep.getLocation(), 20, 8, true, true,true, "sheep");
                 sheep.setHealth(0);
-                sheep.remove();
-                this.cancel();
             }
         }
     }

@@ -153,6 +153,8 @@ public class KitManager implements Listener {
         return Arrays.asList(lines);
     }
 
+
+
     @EventHandler
     public void close(InventoryCloseEvent event) {
         Player p = (Player) event.getPlayer();
@@ -170,8 +172,7 @@ public class KitManager implements Listener {
 
     @EventHandler
     public void dropItem(PlayerDropItemEvent event) {
-        if(main.game.started)
-            event.setCancelled(true);
+        event.setCancelled(true);
     }
 
     @EventHandler

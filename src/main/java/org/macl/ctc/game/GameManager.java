@@ -156,7 +156,11 @@ public class GameManager {
                     return;
                 }
 
-                timeRemaining--;
+                // Only decrement timer if there are 2+ players online
+                int playerCount = Bukkit.getOnlinePlayers().size();
+                if (playerCount >= 2) {
+                    timeRemaining--;
+                }
 
                 // Update scoreboard every second
                 int redCount = 0, blueCount = 0;
@@ -167,23 +171,25 @@ public class GameManager {
                 }
                 updateScoreboard(redCount, blueCount);
 
-                // Warnings at specific time marks
-                if (timeRemaining == 600) { // 10 minutes left
-                    main.broadcast(ChatColor.YELLOW + "⏰ 10 minutes remaining!");
-                } else if (timeRemaining == 300) { // 5 minutes left
-                    main.broadcast(ChatColor.GOLD + "⏰ 5 minutes remaining!");
-                } else if (timeRemaining == 60) { // 1 minute left
-                    main.broadcast(ChatColor.RED + "⏰ 1 MINUTE REMAINING!");
-                } else if (timeRemaining == 30 || timeRemaining == 10) {
-                    main.broadcast(ChatColor.RED + "⏰ " + timeRemaining + " seconds remaining!");
-                } else if (timeRemaining <= 5 && timeRemaining > 0) {
-                    main.broadcast(ChatColor.DARK_RED + "⏰ " + timeRemaining + "...");
-                }
+                // Warnings at specific time marks (only if timer is counting)
+                if (playerCount >= 2) {
+                    if (timeRemaining == 600) { // 10 minutes left
+                        main.broadcast(ChatColor.YELLOW + "⏰ 10 minutes remaining!");
+                    } else if (timeRemaining == 300) { // 5 minutes left
+                        main.broadcast(ChatColor.GOLD + "⏰ 5 minutes remaining!");
+                    } else if (timeRemaining == 60) { // 1 minute left
+                        main.broadcast(ChatColor.RED + "⏰ 1 MINUTE REMAINING!");
+                    } else if (timeRemaining == 30 || timeRemaining == 10) {
+                        main.broadcast(ChatColor.RED + "⏰ " + timeRemaining + " seconds remaining!");
+                    } else if (timeRemaining <= 5 && timeRemaining > 0) {
+                        main.broadcast(ChatColor.DARK_RED + "⏰ " + timeRemaining + "...");
+                    }
 
-                // Time's up - end game
-                if (timeRemaining <= 0) {
-                    this.cancel();
-                    timeUp();
+                    // Time's up - end game
+                    if (timeRemaining <= 0) {
+                        this.cancel();
+                        timeUp();
+                    }
                 }
             }
         }.runTaskTimer(main, 20L, 20L); // Run every second

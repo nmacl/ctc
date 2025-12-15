@@ -59,9 +59,49 @@ public class Players extends DefaultListener {
 
         // Save stats to DB before they leave
         main.getStats().savePlayer(p.getUniqueId()).thenRun(() -> {
-            main.broadcast("quit event " + game.resetPlayer(p, true));
+            boolean wasOnTeam = game.resetPlayer(p, true);
+            main.broadcast("quit event " + wasOnTeam);
             // Remove from cache after save
             main.getStats().removeFromCache(p.getUniqueId());
+
+            // Check if we should end the game due to low player count
+            // Schedule this check for next tick to ensure player is fully removed
+            Bukkit.getScheduler().runTask(main, () -> {
+                if (game.started) {
+                    /*int remainingPlayers = Bukkit.getOnlinePlayers().size();
+
+                    if (remainingPlayers < 2) {
+                        main.broadcast(ChatColor.YELLOW + "Not enough players to continue! Game ending...");
+
+                        // End the game - no winner, just restart
+                        game.started = false;
+                        game.starting = false;
+
+                        // Save remaining player stats
+                        for (Player online : Bukkit.getOnlinePlayers()) {
+                            main.getStats().savePlayer(online.getUniqueId());
+                        }
+
+                        // Restart server
+                        new BukkitRunnable() {
+                            @Override
+                            public void run() {
+                                main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                                main.broadcast("Server restarting due to insufficient players...", ChatColor.YELLOW);
+                                main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                            }
+                        }.runTaskLater(main, 60L);
+
+                        new BukkitRunnable() {
+                            @Override
+                            public void run() {
+                                Bukkit.shutdown();
+                            }
+                        }.runTaskLater(main, 100L);
+                    }
+                    */
+                }
+            });
         });
     }
 
@@ -89,19 +129,63 @@ public class Players extends DefaultListener {
     }
 
     @EventHandler
-    public void fish(PlayerFishEvent event) {
-        event.getHook().setVelocity(event.getHook().getVelocity().multiply(1.7));
-        if(event.getCaught() instanceof Player) {
-            Player c = (Player) event.getCaught();
-            Player p = event.getPlayer();
-            Vector velo = p.getLocation().getDirection().multiply(-3f);
-            double y = p.getLocation().distance(c.getLocation());
-            y*=0.14;
-            velo.setY(Math.min(y, 1.8));
-            velo.setX(velo.getX()*0.3);
-            velo.setZ(velo.getZ()*0.3);
-            c.setVelocity(velo);
+    public void onFish(PlayerFishEvent event) {
+        Player p = event.getPlayer();
+        Kit kit = main.getKits().get(p.getUniqueId());
+
+        // Only works for Fisherman kit
+        if (!(kit instanceof Fisherman)) {
+            event.setCancelled(true);
+            return;
         }
+
+        // Handle player hooking
+        if (event.getCaught() instanceof Player) {
+            event.getHook().setVelocity(event.getHook().getVelocity().multiply(1.7));
+
+            Player caught = (Player) event.getCaught();
+            Vector velo = p.getLocation().getDirection().multiply(-3f);
+            double y = p.getLocation().distance(caught.getLocation());
+            y *= 0.14;
+            velo.setY(Math.min(y, 1.8));
+            velo.setX(velo.getX() * 0.3);
+            velo.setZ(velo.getZ() * 0.3);
+
+            caught.setVelocity(velo);
+            return;
+        }
+
+        // Only trigger grappling hook when bobber lands on a block
+        if (event.getState() != PlayerFishEvent.State.IN_GROUND) return;
+
+        FishHook hook = event.getHook();
+
+        // Must be a solid block
+        if (!hook.getLocation().getBlock().getType().isSolid()) return;
+
+        // === GRAPPLING HOOK MECHANIC ===
+        Location playerLoc = p.getLocation();
+        Location hookLoc = hook.getLocation();
+
+        // Calculate pull direction from player to hook
+        Vector pull = hookLoc.toVector().subtract(playerLoc.toVector());
+        double distance = pull.length();
+        pull.normalize();
+
+        // Calculate strength (scales with distance, capped at 2.2)
+        double strength = Math.min(distance * 0.35, 2.2);
+        double verticalBoost = 0.4;
+
+        // Apply grappling velocity
+        Vector velocity = pull.multiply(strength);
+        velocity.setY(Math.min(0.8, velocity.getY() + verticalBoost));
+        p.setVelocity(velocity);
+
+        // Sound effect
+        p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1f, 1.2f);
+
+        // Cancel vanilla fishing behavior
+        event.setCancelled(true);
     }
 
     @EventHandler
@@ -288,7 +372,12 @@ public class Players extends DefaultListener {
             }
             //on Classic Cane (blaze rod) hit
             else if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.BLAZE_ROD) {
-                g.onClassicCaneHit();
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        g.onClassicCaneHit();
+                    }
+                }.runTaskLater(main, 1L);
 
 //                 new BukkitRunnable() {
 //
@@ -389,6 +478,7 @@ public class Players extends DefaultListener {
             kitObj.cancelAllRegen();
             kitObj.cancelAllTasks();
         }
+        event.setDeathMessage(null);
     }
 
     @EventHandler
@@ -451,14 +541,15 @@ public class Players extends DefaultListener {
     }
 
     /**
-     * Calculate respawn time based on distance from player's core.
+     * Calculate respawn time based on horizontal distance from player's core.
      * - Die at your core: 12s (max penalty)
      * - Die at center/beyond: 6s (min penalty)
      * - Linear scaling in between
+     * Note: Only considers X and Z coordinates (ignores height/Y)
      */
     private int calculateRespawnTime(Player p, Location teamSpawn) {
-        final int MIN_RESPAWN = 6;  // Die far from core (quick respawn)
-        final int MAX_RESPAWN = 12; // Die near core (slow respawn)
+        final int MIN_RESPAWN = 7;  // Die far from core (quick respawn)
+        final int MAX_RESPAWN = 16; // Die near core (slow respawn)
 
         Location deathLoc = p.getLocation();
 
@@ -469,9 +560,9 @@ public class Players extends DefaultListener {
 
         Location centerLoc = world.center.get(0); // First center point
 
-        // Calculate distances
-        double distanceFromCore = deathLoc.distance(teamSpawn);
-        double coreToCenter = teamSpawn.distance(centerLoc);
+        // Calculate 2D horizontal distances (ignoring Y coordinate)
+        double distanceFromCore = getHorizontalDistance(deathLoc, teamSpawn);
+        double coreToCenter = getHorizontalDistance(teamSpawn, centerLoc);
 
         // Cap distance at center (don't reward dying beyond center)
         if (distanceFromCore > coreToCenter) {
@@ -485,6 +576,15 @@ public class Players extends DefaultListener {
 
         // Clamp between min and max (safety check)
         return Math.max(MIN_RESPAWN, Math.min(MAX_RESPAWN, respawnTime));
+    }
+
+    /**
+     * Calculate horizontal distance between two locations (ignoring Y coordinate)
+     */
+    private double getHorizontalDistance(Location loc1, Location loc2) {
+        double dx = loc1.getX() - loc2.getX();
+        double dz = loc1.getZ() - loc2.getZ();
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
 

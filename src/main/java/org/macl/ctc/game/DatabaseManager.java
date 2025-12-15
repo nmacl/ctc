@@ -66,7 +66,7 @@ public class DatabaseManager {
     }
 
     private void createTables(Connection conn) throws SQLException {
-        String createTableSql = """
+        String createPlayerStatsTable = """
             CREATE TABLE IF NOT EXISTS player_stats (
                 player_uuid CHAR(36) PRIMARY KEY,
                 kills INT NOT NULL DEFAULT 0,
@@ -80,9 +80,20 @@ public class DatabaseManager {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """;
 
+        String createServerMapsTable = """
+            CREATE TABLE IF NOT EXISTS server_maps (
+                server_name VARCHAR(50) PRIMARY KEY,
+                map_name VARCHAR(50) NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """;
+
         try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createTableSql);
+            stmt.execute(createPlayerStatsTable);
             plugin.getLogger().info("Database table 'player_stats' ready");
+
+            stmt.execute(createServerMapsTable);
+            plugin.getLogger().info("Database table 'server_maps' ready");
         }
     }
 
@@ -91,6 +102,25 @@ public class DatabaseManager {
             throw new SQLException("Database connection pool is not initialized");
         }
         return dataSource.getConnection();
+    }
+
+    public void updateServerMap(String serverName, String mapName) {
+        try (Connection conn = getConnection()) {
+            String upsert = """
+                INSERT INTO server_maps (server_name, map_name)
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE map_name = ?, updated_at = CURRENT_TIMESTAMP
+            """;
+            try (var ps = conn.prepareStatement(upsert)) {
+                ps.setString(1, serverName.toLowerCase());
+                ps.setString(2, mapName);
+                ps.setString(3, mapName);
+                ps.executeUpdate();
+                plugin.getLogger().info("Updated database: " + serverName + " -> " + mapName);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Failed to update server map in database: " + e.getMessage());
+        }
     }
 
     public void shutdown() {

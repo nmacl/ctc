@@ -53,14 +53,15 @@ public class Artificer extends Kit {
 // ─── Flamethrower ─────────────────────────────────────────────────────────────
     public void useFlamethrower() {
         if (isOnCooldown("Flamethrower")) return;
+
         setCooldown("Flamethrower", 9, Sound.BLOCK_AMETHYST_CLUSTER_HIT, () -> {
             p.getInventory().setItem(0, newItem(Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.RED + "Flamethrower"));
         });
         p.getInventory().setItem(0, newItem(Material.HOST_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.AQUA + "Recharging…"));
 
         BukkitTask runTask = new BukkitRunnable() {
-            int count = 0, hits = 0;
-            boolean canGiveVoid = false;
+            int count = 0;
+            int successfulShots = 0; // counts runnable ticks where at least one player was hit
 
             @Override
             public void run() {
@@ -71,45 +72,63 @@ public class Artificer extends Kit {
                 }
 
                 p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1f, 1.5f);
+
                 Location start = p.getEyeLocation().subtract(0, 0.5, 0);
-                Vector dir    = start.getDirection();
-                double step   = 0.2, maxLen = 10, damageRad = 0.7;
-                int damage    = 2;
-                boolean hitPlayer = false;
+                Vector dir = start.getDirection();
+
+                double step = 0.2, maxLen = 10, damageRad = 0.7;
+
+                // 3 hearts total = 6.0 health over 25 shots
+                final double damagePerShot = 6.0 / 25.0;
+
+                boolean hitAPlayerThisShot = false;
+
+                // IMPORTANT: prevent the same victim being damaged 10x in one tick
+                java.util.HashSet<java.util.UUID> damagedThisShot = new java.util.HashSet<>();
 
                 // trace the flame
                 for (int i = 0; i * step <= maxLen; i++) {
-                    Location loc = start.clone().add(dir.clone().multiply(i * step));
-                    if (p.getWorld().rayTraceBlocks(start, dir, i * step) != null) break;
+                    double dist = i * step;
+                    Location loc = start.clone().add(dir.clone().multiply(dist));
+
+                    // stop at first block hit
+                    if (p.getWorld().rayTraceBlocks(start, dir, dist) != null) break;
+
                     p.getWorld().spawnParticle(Particle.FLAME, loc, 0);
 
                     // damage nearby
                     for (Entity ent : p.getWorld().getNearbyEntities(loc, damageRad, damageRad, damageRad)) {
-                        if (ent instanceof LivingEntity le && !le.equals(p) && p.hasLineOfSight(le)) {
-                            // tag damage by player
-                            double newHealth = le.getHealth() - 0.01;
-                            main.combatTracker.setHealth((Player) le, newHealth, p, "flamethrower");
+                        if (!(ent instanceof LivingEntity le)) continue;
+                        if (le.equals(p)) continue;
+                        if (!p.hasLineOfSight(le)) continue;
 
-                            hitPlayer = true;
+                        le.setFireTicks(40); // you said ignore for damage math; leaving it
 
-                            if (++hits >= 3) {
-                                hits = 0;
-                                canGiveVoid = true;
-                            }
+                        if (le instanceof Player victim) {
+                            // Only apply once per victim per runnable execution
+                            if (!damagedThisShot.add(victim.getUniqueId())) continue;
 
-                            le.setFireTicks(40);
+                            hitAPlayerThisShot = true;
+
+                            double newHealth = Math.max(0.0, victim.getHealth() - damagePerShot);
+                            main.combatTracker.setHealth(victim, newHealth, p, "flamethrower");
                         }
                     }
                 }
 
-                if (hitPlayer && canGiveVoid) {
-                    addVoidFragments(1);
-                    canGiveVoid = false;
+                // Void fragments: only when you actually hit a player
+                if (hitAPlayerThisShot) {
+                    if (++successfulShots >= 3) {
+                        successfulShots = 0;
+                        addVoidFragments(1);
+                    }
                 }
             }
         }.runTaskTimer(main, 0, 2);
+
         registerTask(runTask);
     }
+
 
 
     // Frost dagger: simple projectile, 5s cooldown

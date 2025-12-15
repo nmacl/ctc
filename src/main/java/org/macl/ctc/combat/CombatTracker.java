@@ -27,7 +27,6 @@ import static java.util.Map.entry;
 public class CombatTracker {
     private final long hitExpiryMs;
     private final Map<UUID, CombatState> states = new ConcurrentHashMap<>();
-    private final Set<UUID> alreadyHandled = ConcurrentHashMap.newKeySet();
     private final Main main;
 
     private final Map<String,String> ABILITY_MESSAGES = Map.ofEntries(
@@ -41,9 +40,10 @@ public class CombatTracker {
             entry("cane", "%killer% whacked %victim% into oblivion"),
             entry("scooter", "%victim% got run over by %killer%'s scooter"),
             entry("flamethrower", "%killer% roasted %victim% with a flamethrower"),
+            entry("mystic sap", "%killer%'s mystic sap poisoned %victim%"),
             entry("void bomb", "%killer% has detained %victim% at the end of time"),
             entry("cod sniper", "%killer% sniped %victim% with a fish"),
-            entry("Fireball", "%victim% ate a fireball from %killer%"),
+            entry("Fireball", "%victim% got shotgunned by %killer%"),
             entry("Shulker Bullet", "%killer%'s pepper'd %victim% in the face"),
             entry("Snowball", "%killer% pummeled %victim% with snowballs"),
             entry("Spectral Arrow", "%victim% got frostbite from %killer%'s frozen arrow"),
@@ -82,35 +82,51 @@ public class CombatTracker {
     public void setHealth(Player victim, double newHealth, @Nullable Player attacker, String ability) {
         if (victim.isDead()) return;
 
-        double delta = victim.getHealth() - newHealth; // >0 damage, <0 heal
+        double oldHealth = victim.getHealth();
+
+        // Clamp new health
+        newHealth = Math.max(0.0, newHealth);
+
+        double delta = oldHealth - newHealth; // >0 = damage, <0 = heal
+
         if (delta > 0) {
             tagHit(victim, attacker, ability, delta);
         }
 
-        if (newHealth <= 0) {
-            victim.setHealth(0);   // This will fire PlayerDeathEvent
-        } else {
-            victim.setHealth(newHealth);
-        }
-
+        // Apply once
         victim.setHealth(newHealth);
     }
 
-    /** Call from PlayerDeathEvent listener. */
+
+    private final java.util.Set<UUID> processingDeath = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
     public void onDeath(PlayerDeathEvent event) {
         Player victim = event.getEntity();
+        UUID id = victim.getUniqueId();
 
-        CombatState state = states.remove(victim.getUniqueId());
-        Hit killerHit = resolveKiller(state, victim);
+        if (!processingDeath.add(id)) {
+            // already handled this death
+            event.setDeathMessage(null);
+            return;
+        }
 
-        recordStats(victim, killerHit);
-        String message = buildDeathMessage(victim, killerHit,
-                victim.getLastDamageCause() == null ? null : victim.getLastDamageCause().getCause());
+        try {
+            CombatState state = states.remove(id);
+            Hit killerHit = resolveKiller(state, victim);
 
-        event.setDeathMessage("");
-        victim.getWorld().getPlayers().forEach(p -> p.sendMessage(message));
-        event.getDrops().clear();
+            recordStats(victim, killerHit);
+            String message = buildDeathMessage(victim, killerHit,
+                    victim.getLastDamageCause() == null ? null : victim.getLastDamageCause().getCause());
+
+            event.setDeathMessage(null);
+            victim.getWorld().getPlayers().forEach(p -> p.sendMessage(message));
+            event.getDrops().clear();
+        } finally {
+            // remove next tick so respawn cycle doesn't block future deaths
+            Bukkit.getScheduler().runTask(main, () -> processingDeath.remove(id));
+        }
     }
+
 
     // --- internals ---
 
@@ -126,8 +142,8 @@ public class CombatTracker {
                 System.currentTimeMillis()
         ));
 
-        // Record damage stats
-        int damageAmount = (int) Math.ceil(amount);
+        int damageAmount = (int) Math.round(amount * 100.0); // centi-health
+        if (damageAmount <= 0) return;
         main.getStats().recordDamage(attacker.getUniqueId(), damageAmount);
         main.getStats().recordDamageTaken(victim.getUniqueId(), damageAmount);
     }

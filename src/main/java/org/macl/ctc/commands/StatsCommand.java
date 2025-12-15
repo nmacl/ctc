@@ -49,8 +49,8 @@ public class StatsCommand implements CommandExecutor {
         p.sendMessage(formatLine("Captures",     ps.captures()));
         p.sendMessage(formatLine("Core Cracks", ps.coreCracks()));
         p.sendMessage(formatLine("Games Played", ps.gamesPlayed()));
-        p.sendMessage(formatLine("Damage Dealt", ps.damageDealt()));
-        p.sendMessage(formatLine("Damage Taken", ps.damageTaken()));
+        p.sendMessage(formatLine("Damage Dealt", formatDamage(ps.damageDealt())));
+        p.sendMessage(formatLine("Damage Taken", formatDamage(ps.damageTaken())));
 
         // Footer
         p.sendMessage(ChatColor.GOLD + "==========================");
@@ -76,6 +76,10 @@ public class StatsCommand implements CommandExecutor {
         p.spigot().sendMessage(ipLine);
 
         return true;
+    }
+
+    private String formatDamage(int centiHealth) {
+        return String.format("%.2f", centiHealth / 100.0);
     }
 
     private StatsManager getStats() {

@@ -120,6 +120,15 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         map = currentMap;
         getLogger().info("Loading map: " + currentMap);
         worldManager.loadWorld("map", currentMap);
+
+        // Update database with current server and map
+        String serverName = System.getenv("SERVER_NAME");
+        if (serverName == null || serverName.isEmpty()) {
+            getLogger().warning("SERVER_NAME environment variable not set! Using 'unknown'");
+            serverName = "unknown";
+        }
+        db.updateServerMap(serverName, currentMap);
+
         combatTracker = new CombatTracker(this);  // initialize after other managers if needed
 
         for (Listener i : listens)
@@ -291,72 +300,52 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
             boolean damagesAllies,
             String ability
     ) {
-        // 1) Clone the origin so we don't shift 'l' itself
         Location center = l.clone().add(0, 1, 0);
         World world = center.getWorld();
 
-        // 2) Spawn the visual/ambient explosion
         world.createExplosion(center, 2f, fire, breaksBlocks);
 
-        // 3) Prepare ray-trace heights
         final int numberOfRays = 6;
         double[] offsets = {0, 1, 2, 3, 4, 5};
 
-        // 4) Loop through nearby entities only once
         for (Entity e : world.getNearbyEntities(center, maxDistance, maxDistance, maxDistance)) {
-            if (!(e instanceof Player)) continue;
-            Player target = (Player) e;
+            if (!(e instanceof Player target)) continue;
 
-            // 4a) Never hit yourself
-            if (target.getUniqueId().equals(p.getUniqueId())) {
-                Bukkit.broadcastMessage("[DEBUG] Skipping self");
+            boolean isSelf = target.getUniqueId().equals(p.getUniqueId());
+
+            // Skip same-team only if not self (self always allowed)
+            if (!isSelf && !damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
                 continue;
             }
 
-            // 4b) Skip same-team if we're not supposed to damage allies
-            if (!damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
-                continue;
-            }
-
-            // 4c) Distance check
             double distance = center.distance(target.getLocation());
-            if (distance > maxDistance) {
-                continue;
-            }
+            if (distance > maxDistance) continue;
 
-            // 5) Count how many unobstructed rays hit
             int raysHit = 0;
             for (double offset : offsets) {
                 Location start = center.clone().add(0, offset, 0);
                 Vector dir = target.getLocation().toVector().subtract(start.toVector()).normalize();
                 RayTraceResult result = world.rayTraceBlocks(
-                        start,
-                        dir,
-                        distance,
-                        FluidCollisionMode.NEVER,
-                        true
+                        start, dir, distance, FluidCollisionMode.NEVER, true
                 );
-                if (result == null) {
-                    raysHit++;
-                }
+                if (result == null) raysHit++;
             }
 
+            if (raysHit == 0) continue;
 
-            if (raysHit == 0) {
-                continue;
-            }
-
-            // 6) If any rays got through, apply proportional damage
             double damageFactor = (double) raysHit / numberOfRays;
             double damage = maxDamage * (1 - (distance / maxDistance)) * damageFactor;
-            double newHealth = target.getHealth() - damage;
+            if (damage <= 0) continue;
 
-            combatTracker.setHealth(target, newHealth, p, ability);
-
+            if (isSelf) {
+                // self damage: do NOT track
+                target.setHealth(Math.max(0.0, target.getHealth() - damage));
+            } else {
+                // tracked damage
+                combatTracker.setHealth(target, target.getHealth() - damage, p, ability);
+            }
         }
-
     }
-
 
     public ItemStack coreCrush() {
         ItemStack crusher = new ItemStack(Material.DIAMOND_PICKAXE, 1);

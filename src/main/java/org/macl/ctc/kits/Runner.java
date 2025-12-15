@@ -50,7 +50,8 @@ public class Runner extends Kit {
                 public void run() {
                     timer++;
                     // if the player no longer has a kit, stop
-                    if (main.getKits().get(p.getUniqueId()) == null) {
+                    if (main.kit.kits.get(p.getUniqueId()) == null) {
+                        for (Block b : blocks) b.setType(Material.AIR);
                         this.cancel();
                         return;
                     }
@@ -76,7 +77,6 @@ public class Runner extends Kit {
                 }
             }.runTaskTimer(main, 0L, 1L);
 
-            registerTask(runTask);
         }
     }
 
@@ -129,7 +129,7 @@ public class Runner extends Kit {
                             projectile.setShooter(null);
                             if(!proj.contains(projectile)) {
                                 Vector v = projectile.getVelocity();
-                                v.multiply(-1.5f); // Perfect inversion, 50% faster
+                                v.multiply(-1.2f); // Perfect inversion, 50% faster
                                 projectile.setVelocity(v);
                             }
                         }
@@ -139,11 +139,11 @@ public class Runner extends Kit {
                         // Calculate radial direction from player to target
                         Vector direction = e.getLocation().toVector().subtract(p.getLocation().toVector()).normalize();
 
-                        // Apply radial knockback with lift
-                        Vector knockback = direction.multiply(0.8f);
-                        knockback.setY(0.4f); // Add upward lift
-
-                        e.setVelocity(knockback);
+                        // Apply radial knockback with lift (both affected by time decay)
+                        Vector knockback = direction.multiply(0.6f);
+                        knockback.setY(0.3f); // Add upward lift that also decays
+                        if(!(ticks > 4*20))
+                            e.setVelocity(knockback);
 
                         // Spawn particle trail on the knocked back entity
                         new BukkitRunnable() {

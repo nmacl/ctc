@@ -194,8 +194,12 @@ public class Lumberjack extends Kit {
                     } else { // other team logic
                         if (!consumable) { // give constant poison 3 for 2 sec
                             addPotionEffect(p2,new PotionEffect(PotionEffectType.POISON, 40, 2));
+                            // hacky garbage
+                            //main.combatTracker.tagDamage(p2, 0.001, p, "mystic sap");
                         } else { // give poison for 6 sec
                             addPotionEffect(p2,new PotionEffect(PotionEffectType.POISON, 20*8, 0));
+                            // more hacky garbage
+                            //main.combatTracker.tagDamage(p2, 0.001, p, "mystic sap");
                             p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BREEZE_DEATH, 1.0f, 0.9f);
                             cancel();
                         }
@@ -241,7 +245,7 @@ public class Lumberjack extends Kit {
 
         }
 
-        log.setVelocity(dir.multiply(1.8));
+        log.setVelocity(dir.multiply(1.44)); // Reduced by 20% (1.8 * 0.8 = 1.44)
         if (!p.getPassengers().isEmpty()) {
             for (Entity e : p.getPassengers()) {
                 log.addPassenger(e);
@@ -313,7 +317,14 @@ public class Lumberjack extends Kit {
 
                 main.getCombatTracker().setHealth(victim, newHp, p, "chainsaw");
 
+                victim.playHurtAnimation(0);
 
+                // Hurt sound
+                victim.playSound(
+                        p.getLocation(),
+                        Sound.ENTITY_PLAYER_HURT,
+                        1.0f,
+                        0.7f);
                 victim.setNoDamageTicks(0);
             }
         }

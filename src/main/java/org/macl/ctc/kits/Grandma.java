@@ -141,12 +141,17 @@ public class Grandma extends Kit {
 
     public void onCaneHit() {
         hitCount++;
-        giveCane(hitCount);
         if (hitCount >= maxHitCount) {
-            giveClassicCane();
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    giveClassicCane();
+                }
+            }.runTaskLater(main, 1L);
             hitCount = 0;
             isClassy = true;
-
+        } else {
+            giveCane(hitCount);
         }
     }
 
@@ -200,8 +205,8 @@ public class Grandma extends Kit {
         PlayerInventory inv = p.getInventory();
         if (isClassy) {
             ItemStack cc = classicCane.clone();
-            cc.addUnsafeEnchantment(Enchantment.SHARPNESS,4);
-            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,8);
+            cc.addUnsafeEnchantment(Enchantment.SHARPNESS,5);
+            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,10);
             cc.setAmount(maxHitCount + 1);
             inv.setItem(0,cc);
         } else {
