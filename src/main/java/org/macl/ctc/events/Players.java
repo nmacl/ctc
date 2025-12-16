@@ -68,7 +68,7 @@ public class Players extends DefaultListener {
             // Schedule this check for next tick to ensure player is fully removed
             Bukkit.getScheduler().runTask(main, () -> {
                 if (game.started) {
-                    /*int remainingPlayers = Bukkit.getOnlinePlayers().size();
+                    int remainingPlayers = Bukkit.getOnlinePlayers().size();
 
                     if (remainingPlayers < 2) {
                         main.broadcast(ChatColor.YELLOW + "Not enough players to continue! Game ending...");
@@ -99,7 +99,6 @@ public class Players extends DefaultListener {
                             }
                         }.runTaskLater(main, 100L);
                     }
-                    */
                 }
             });
         });
