@@ -22,15 +22,17 @@ import java.util.List;
 public class Runner extends Kit {
     Material wool = (main.game.redHas(p)) ? Material.RED_WOOL : Material.BLUE_WOOL;
     ItemStack sword = newItem(Material.STONE_SWORD, ChatColor.GOLD + "Block Run");
+    ItemStack clock = newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field");
 
     public Runner(Main main, Player p, KitType type) {
         super(main, p, type);
         e.setItem(0, sword);
-        p.getInventory().setItem(1, newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field"));
+        p.getInventory().setItem(1, newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field",2));
         p.getInventory().setItem(2, newItem(Material.SLIME_BALL, ChatColor.DARK_GREEN + "Platform"));
         e.setLeggings(new ItemStack(Material.IRON_LEGGINGS, 1));
         e.setBoots(new ItemStack(Material.LEATHER_BOOTS, 1));
         p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 999999999, 0));
+        regenItem("Deflection Field", clock, 14, 2, 1);
         giveWool();
         giveWool();
         setHearts(16);
@@ -39,8 +41,8 @@ public class Runner extends Kit {
     ArrayList<Block> blocks = new ArrayList<Block>();
     public void blockRun() {
         if (!isOnCooldown("Block Run")) {
-            setCooldown("Block Run", 18, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
-
+            setCooldown("Block Run", 15, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+            
             // grab the BukkitTask and register it
             BukkitTask runTask = new BukkitRunnable() {
                 int timer = 0;
@@ -55,7 +57,7 @@ public class Runner extends Kit {
                         this.cancel();
                         return;
                     }
-                    if (timer < 7 * 20) {
+                    if (timer < 6 * 20) {
                         exp++;
                         playExp(exp * 0.01f);
                         for (int i = -1; i <= 3; i++) {
@@ -84,17 +86,20 @@ public class Runner extends Kit {
     ArrayList<Entity> es = new ArrayList<>();
 
     public void polarField() {
-        if(isOnCooldown("Deflection Field"))
+        if(isOnCooldown("Polar"))
             return;
-        setCooldown("Deflection Field", 16, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+        setCooldown("Polar", 4, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
 
+        int clocks = p.getInventory().first(Material.CLOCK);
+        p.getInventory().getItem(logs).setAmount(p.getInventory().getItem(clocks).getAmount() - 1);
+        
         // Register the task properly
         BukkitTask fieldTask = new BukkitRunnable() {
             @Override
             public void run() {
                 ArrayList<Projectile> proj = new ArrayList<Projectile>();
 
-                if(ticks > 6*20 || p.isDead()) {
+                if(ticks > 2*20 || p.isDead()) {
                     ticks = 0;
                     this.cancel();
                     es.clear();
