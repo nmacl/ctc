@@ -5,15 +5,14 @@ import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
-import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
@@ -24,8 +23,10 @@ import java.util.Objects;
 
 public class Artificer extends Kit {
 
-    int voidBombRadius = 7;
+    int voidBombRadius = 5;
     boolean voidReady = false;
+    
+    ItemStack frost;
 
     public Artificer(Main main, Player p, KitType type) {
         super(main, p, type);
@@ -38,9 +39,9 @@ public class Artificer extends Kit {
 
         // ability items
         inv.setItem(0, newItem(Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.RED + "Flamethrower"));
-        ItemStack frost = new ItemStack(Material.TIPPED_ARROW);
+        frost = new ItemStack(Material.TIPPED_ARROW);
         PotionMeta meta = (PotionMeta) frost.getItemMeta();
-        meta.setBasePotionType(PotionType.SLOWNESS);
+        meta.setBasePotionData(new PotionData(PotionType.SLOWNESS));
         meta.setDisplayName(ChatColor.BLUE + "Frost Dagger");
         frost.setItemMeta(meta);
         inv.setItem(1, frost);
@@ -53,15 +54,14 @@ public class Artificer extends Kit {
 // ─── Flamethrower ─────────────────────────────────────────────────────────────
     public void useFlamethrower() {
         if (isOnCooldown("Flamethrower")) return;
-
         setCooldown("Flamethrower", 9, Sound.BLOCK_AMETHYST_CLUSTER_HIT, () -> {
             p.getInventory().setItem(0, newItem(Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.RED + "Flamethrower"));
         });
         p.getInventory().setItem(0, newItem(Material.HOST_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.AQUA + "Recharging…"));
 
-        BukkitTask runTask = new BukkitRunnable() {
-            int count = 0;
-            int successfulShots = 0; // counts runnable ticks where at least one player was hit
+        new BukkitRunnable() {
+            int count = 0, hits = 0;
+            boolean canGiveVoid = false;
 
             @Override
             public void run() {
@@ -72,69 +72,60 @@ public class Artificer extends Kit {
                 }
 
                 p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1f, 1.5f);
-
                 Location start = p.getEyeLocation().subtract(0, 0.5, 0);
-                Vector dir = start.getDirection();
-
-                double step = 0.2, maxLen = 10, damageRad = 0.7;
-
-                // 3 hearts total = 6.0 health over 25 shots
-                final double damagePerShot = 6.0 / 25.0;
-
-                boolean hitAPlayerThisShot = false;
-
-                // IMPORTANT: prevent the same victim being damaged 10x in one tick
-                java.util.HashSet<java.util.UUID> damagedThisShot = new java.util.HashSet<>();
+                Vector dir    = start.getDirection();
+                double step   = 0.2, maxLen = 10, damageRad = 0.7;
+                int damage    = 2;
+                boolean hitPlayer = false;
 
                 // trace the flame
                 for (int i = 0; i * step <= maxLen; i++) {
-                    double dist = i * step;
-                    Location loc = start.clone().add(dir.clone().multiply(dist));
-
-                    // stop at first block hit
-                    if (p.getWorld().rayTraceBlocks(start, dir, dist) != null) break;
-
+                    Location loc = start.clone().add(dir.clone().multiply(i * step));
+                    if (p.getWorld().rayTraceBlocks(start, dir, i * step) != null) break;
                     p.getWorld().spawnParticle(Particle.FLAME, loc, 0);
 
                     // damage nearby
                     for (Entity ent : p.getWorld().getNearbyEntities(loc, damageRad, damageRad, damageRad)) {
-                        if (!(ent instanceof LivingEntity le)) continue;
-                        if (le.equals(p)) continue;
-                        if (!p.hasLineOfSight(le)) continue;
+                        if (ent instanceof LivingEntity le && !le.equals(p) && p.hasLineOfSight(le)) {
+                            // tag damage by player
+                            double newHealth = le.getHealth() - 0.01;
+                            main.combatTracker.setHealth((Player) le, newHealth, p, "flamethrower");
 
-                        le.setFireTicks(40); // you said ignore for damage math; leaving it
+                            hitPlayer = true;
 
-                        if (le instanceof Player victim) {
-                            // Only apply once per victim per runnable execution
-                            if (!damagedThisShot.add(victim.getUniqueId())) continue;
+                            if (++hits >= 3) {
+                                hits = 0;
+                                canGiveVoid = true;
+                            }
 
-                            hitAPlayerThisShot = true;
-
-                            double newHealth = Math.max(0.0, victim.getHealth() - damagePerShot);
-                            main.combatTracker.setHealth(victim, newHealth, p, "flamethrower");
+                            le.setFireTicks(le.getFireTicks() + 10);
+                            if (le.getFireTicks() >= 60) {
+                                le.setFireTicks(60);
+                            }
                         }
                     }
                 }
 
-                // Void fragments: only when you actually hit a player
-                if (hitAPlayerThisShot) {
-                    if (++successfulShots >= 3) {
-                        successfulShots = 0;
-                        addVoidFragments(1);
-                    }
+                if (hitPlayer && canGiveVoid) {
+                    addVoidFragments(1);
+                    canGiveVoid = false;
                 }
             }
         }.runTaskTimer(main, 0, 2);
-
-        registerTask(runTask);
     }
-
 
 
     // Frost dagger: simple projectile, 5s cooldown
     public void useFrostDagger() {
         if (isOnCooldown("FrostDagger")) return;
-        setCooldown("FrostDagger", 7, Sound.BLOCK_POWDER_SNOW_BREAK, () -> {});
+        setCooldown("FrostDagger", 7, Sound.BLOCK_POWDER_SNOW_BREAK, () -> {
+            p.getInventory().setItem(1, frost);
+        });
+
+        p.getWorld().playSound(p.getLocation(),Sound.BLOCK_GLASS_BREAK,1.0f,1.6f);
+
+        p.getInventory().setItem(1,newItem(Material.ARROW,ChatColor.GRAY + "Spent Dagger..."));
+
         SpectralArrow arrow = p.launchProjectile(SpectralArrow.class);
         arrow.setShooter(p);
         arrow.setVelocity(p.getLocation().getDirection().multiply(1.5));
@@ -165,7 +156,7 @@ public class Artificer extends Kit {
 
         p.getWorld().playSound(p.getLocation(), Sound.ENTITY_CHICKEN_EGG, 10f, 0.8f);
 
-        BukkitTask voidTask = new BukkitRunnable() {
+        new BukkitRunnable() {
             int tick = 0;
             final int maxIter = 50;
             final double initRad = 0.3;
@@ -228,7 +219,6 @@ public class Artificer extends Kit {
                 tick++;
             }
         }.runTaskTimer(main, 0, 1);
-        registerTask(voidTask);
     }
 
     public void addVoidFragments(int amount) {
@@ -260,21 +250,12 @@ public class Artificer extends Kit {
 
         // carve out the sphere…
         for (Location l : sphere(loc, voidBombRadius + 1)) {
-            if (!main.restricted.contains(l.getBlock().getType()) && l.getBlock().getType() != Material.AIR) {
+            if (!main.restricted.contains(l.getBlock().getType()) && l.getBlock().getType() != Material.AIR)
                 l.getBlock().setType(Material.BLACK_CONCRETE);
-            }
         }
         for (Location l : sphere(loc, voidBombRadius)) {
-            Block block = l.getBlock();
-            if (!main.restricted.contains(block.getType())) {
-                // Fire event for each block
-                BlockBreakEvent event = new BlockBreakEvent(block, p); // or null if no player
-                Bukkit.getPluginManager().callEvent(event);
-
-                if (!event.isCancelled()) {
-                    block.setType(Material.AIR);
-                }
-            }
+            if (!main.restricted.contains(l.getBlock().getType()))
+                l.getBlock().setType(Material.AIR);
         }
 
         // kill any players inside
@@ -314,7 +295,7 @@ public class Artificer extends Kit {
         double increment = 2 * Math.PI / particles;
         double radiusIncrement = (endRadius - startRadius) / duration;
 
-        BukkitTask updraftTask = new BukkitRunnable() {
+        new BukkitRunnable() {
             double currentRadius = startRadius;
             int iterations = 0;
             double vOffset = 0.3;
@@ -340,7 +321,6 @@ public class Artificer extends Kit {
                 iterations++;
             }
         }.runTaskTimer(main, 0, 1);
-        registerTask(updraftTask);
 
     }
 
@@ -356,7 +336,7 @@ public class Artificer extends Kit {
         for (int x = X - radius; x <= X + radius; x++) {
             for (int y = Y - radius; y <= Y + radius; y++) {
                 for (int z = Z - radius; z <= Z + radius; z++) {
-                    if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) <= radiusSquared) {
+                    if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) < radiusSquared) {
                         Location block = new Location(world, x, y, z);
                         blocks.add(block);
                     }

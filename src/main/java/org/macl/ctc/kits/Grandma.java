@@ -32,7 +32,7 @@ public class Grandma extends Kit {
     Minecart scooterEntity;
     int explodeScooter;
     BukkitTask caneTask;
-    BukkitTask scooterTask;
+    scooterProcess scooterProc;
 
     public Grandma(Main main, Player p, KitType type) {
         super(main, p, type);
@@ -43,7 +43,7 @@ public class Grandma extends Kit {
         e.addItem(scooterItem);
 //        p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 99999999, 0));
         e.setLeggings(newItemEnchanted(Material.GOLDEN_LEGGINGS, ChatColor.GOLD + "Golden Pantaloons", Enchantment.SWIFT_SNEAK, 1));
-        e.setChestplate(newItem(Material.LEATHER_CHESTPLATE, "Flower Dress"));
+        e.setChestplate(newItem(Material.LEATHER_CHESTPLATE, "Tattered Dress"));
         giveWool();
         giveWool();
         setCookieRegen(0);
@@ -141,17 +141,12 @@ public class Grandma extends Kit {
 
     public void onCaneHit() {
         hitCount++;
+        giveCane(hitCount);
         if (hitCount >= maxHitCount) {
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    giveClassicCane();
-                }
-            }.runTaskLater(main, 1L);
+            giveClassicCane();
             hitCount = 0;
             isClassy = true;
-        } else {
-            giveCane(hitCount);
+
         }
     }
 
@@ -186,6 +181,7 @@ public class Grandma extends Kit {
         Minecart scooter = p.getWorld().spawn(p.getLocation(),Minecart.class);
         scooter.addPassenger(p);
         scooterProcess sp = new scooterProcess();
+        scooterProc = sp;
         sp.scooter = scooter;
         scooterEntity = scooter;
         ridingScooter = true;
@@ -205,8 +201,8 @@ public class Grandma extends Kit {
         PlayerInventory inv = p.getInventory();
         if (isClassy) {
             ItemStack cc = classicCane.clone();
-            cc.addUnsafeEnchantment(Enchantment.SHARPNESS,5);
-            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,10);
+            cc.addUnsafeEnchantment(Enchantment.SHARPNESS,4);
+            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,8);
             cc.setAmount(maxHitCount + 1);
             inv.setItem(0,cc);
         } else {
@@ -275,11 +271,11 @@ public class Grandma extends Kit {
     }
 
     public void scooterExplode() {
-        if (scooterEntity != null && !scooterEntity.getPassengers().isEmpty()) {
-            scooterEntity.removePassenger(scooterEntity.getPassengers().get(0));
+        if (scooterProc != null) {
+            scooterProc.despawn();
         }
 
         main.fakeExplode(p,p.getLocation().add(0.0,1.0,0.0),18,6,false,true,true, "scooter");
-        p.getWorld().createExplosion(p.getLocation(), 3f, false, true);
+//        p.getWorld().createExplosion(p.getLocation(), 3f, false, true);
     }
 }

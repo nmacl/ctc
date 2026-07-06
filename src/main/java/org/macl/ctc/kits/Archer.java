@@ -1,8 +1,9 @@
 package org.macl.ctc.kits;
 
-import net.minecraft.world.item.alchemy.Potion;
+import com.zaxxer.hikari.util.FastList;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -13,28 +14,28 @@ import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
-import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 import org.macl.ctc.kits.Kit;
 import org.macl.ctc.kits.KitType;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 
 public class Archer extends Kit {
-    // PDC key for tagging arrows with their type
-    private final NamespacedKey ARROW_TYPE_KEY;
     public void shoot(ProjectileLaunchEvent event) {
-        // Determine arrow type from current hotbar slot
         ArrowType inHand = ArrowType.FLAME;
+
         switch(p.getInventory().getHeldItemSlot()) {
             case 0:
                 inHand = ArrowType.FLAME;
@@ -56,32 +57,30 @@ public class Archer extends Kit {
                 break;
         }
 
-        // TAG THE ARROW with its type using PDC
-        if(event.getEntity() instanceof Arrow) {
-            Arrow arrow = (Arrow) event.getEntity();
-            arrow.getPersistentDataContainer().set(ARROW_TYPE_KEY, PersistentDataType.STRING, inHand.name());
+        if (event.getEntity() instanceof Arrow a) {
+            for (PotionEffect p : a.getCustomEffects()) {
+                a.removeCustomEffect(p.getType());
+            }
+            a.setCustomName(arrowTypeToName(curArrow));
+           a.setColor(getArrowPotionType(curArrow).getPotionEffects().get(0).getType().getColor());
         }
 
-        // Update curArrow for UI purposes
-        curArrow = inHand;
-
-        // Special handling for cyclone
         if(inHand == ArrowType.CYCLONE) {
             BukkitTask cyc = new cycloneTimer(event.getEntity()).runTaskTimer(main, 0L, 1L);
             registerTask(cyc);
         }
-
-        // Check cooldown and remove arrow from hand
         if(inHand != ArrowType.FLAME) {
+            p.getInventory().setItemInMainHand(null);
             if(!canShoot.get(inHand)) {
                 event.setCancelled(true);
                 return;
             }
-
-            // Start cooldown immediately on shoot
-            cooldown(8, inHand);
-            p.getInventory().setItemInMainHand(null);
         }
+        if (curArrow != ArrowType.FLAME) {
+            cooldown(getArrowCooldown(curArrow), curArrow);
+        }
+
+
     }
 
     public class cycloneTimer extends BukkitRunnable {
@@ -102,17 +101,15 @@ public class Archer extends Kit {
                 this.cancel();
             }
             Random random = new Random();
-
-            // Pull ALL entities toward cyclone (not just players)
             for(Entity e : a.getNearbyEntities(3,3,3)) {
-                // Don't pull the shooter or the arrow itself
-                if(e.equals(p) || e.equals(a)) continue;
-
                 int number = random.nextInt(2) - 1;
-                e.setVelocity(new Vector(number*Math.random()*0.3, Math.abs(Math.random()+0.2)-0.2, number*Math.random()*0.3));
-            }
+                boolean skip = false;
+                if (e instanceof Player pl) if (pl.getUniqueId() == p.getUniqueId()) skip = true;
+                if(!skip)
+                    e.setVelocity(new Vector(number*Math.random()*0.3, Math.abs(Math.random()+0.2)-0.2, number*Math.random()*0.3));
 
-            a.getWorld().spawnParticle(Particle.CLOUD, a.getLocation(), 5);
+            }
+            a.getWorld().spawnParticle(Particle.CLOUD, a.getLocation(), 5,0,0,0,0.3,null,true);
             a.getWorld().playSound(a.getLocation(), Sound.ENTITY_HORSE_BREATHE, 1, 1);
             seconds--;
         }
@@ -123,12 +120,15 @@ public class Archer extends Kit {
 
         // Apply effects to nearby players
         for(Entity e : world.getNearbyEntities(loc, 4, 4, 4)) {
-            if(e instanceof Player) {
-                LivingEntity f = (LivingEntity) e;
+            if(e instanceof LivingEntity f) {
+                f.setVelocity(new Vector(0,0.25,0));
                 f.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 100, 2));
                 f.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 120, 0));
             }
         }
+
+//        List<FallingBlock> fallingBlockList = new ArrayList<>(List.of());
+        ArrayList<FallingBlock> fallingBlocks = new ArrayList<>();
 
         // Process blocks within a 4 block radius
         int radius = 3; // Radius for block picking
@@ -138,15 +138,26 @@ public class Archer extends Kit {
                     Block block = world.getBlockAt(loc.getBlockX() + x, loc.getBlockY() + y, loc.getBlockZ() + z);
                     Material blockType = block.getType();
                     if (!blockType.isAir() && blockType.isSolid() && !main.restricted.contains(block.getType())) {
+
                         Location blockLocation = block.getLocation();
 
                         // Convert the block to a falling block
                         FallingBlock fallingBlock = world.spawnFallingBlock(blockLocation, block.getBlockData());
                         fallingBlock.setDropItem(false); // Prevents the block from dropping as an item
                         fallingBlock.setHurtEntities(true); // Optional: Falling blocks will hurt entities they fall on
-
+                        fallingBlock.setGravity(false);
                         // Simulate levitation effect on the block
-                        fallingBlock.setVelocity(new Vector(0, 1.5, 0)); // Upward velocity to simulate levitation
+                        fallingBlock.setVelocity(new Vector(0, 0.2, 0)); // Upward velocity to simulate levitation
+
+                        if (currentIce != null) {
+                            if (currentIce.sphere.contains(block)) {
+                                currentIce.sphere.remove(block);
+                                currentIce.fallingSphere.add(fallingBlock);
+                            }
+                        }
+
+
+                        fallingBlocks.add(fallingBlock);
 
                         // Set the original block location to air
                         block.setType(Material.AIR);
@@ -155,69 +166,148 @@ public class Archer extends Kit {
                 }
             }
         }
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (FallingBlock b : fallingBlocks) {
+                    b.setGravity(true);
+                    cancel();
+                }
+            }
+        }.runTaskLater(main,100L);
+
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(33,33,33),1.5F);
+
+        double visualRad = radius + 0.5;
+
+        loc = loc.getBlock().getLocation().add(0.5,0.5,0.5);
+
+        p.getWorld().playSound(loc,Sound.BLOCK_ANVIL_LAND,0.3f,0.1f);
+        p.getWorld().playSound(loc,Sound.BLOCK_SHULKER_BOX_OPEN,2.0f,0.5f);
+
+        Location corner1 = loc.clone().add(visualRad,visualRad,visualRad);
+        Location corner2 = loc.clone().add(-visualRad,visualRad,visualRad);
+        Location corner3 = loc.clone().add(-visualRad,visualRad,-visualRad);
+        Location corner4 = loc.clone().add(visualRad,visualRad,-visualRad);
+
+        Location corner5 = loc.clone().add(visualRad,-visualRad,visualRad);
+        Location corner6 = loc.clone().add(-visualRad,-visualRad,visualRad);
+        Location corner7 = loc.clone().add(-visualRad,-visualRad,-visualRad);
+        Location corner8 = loc.clone().add(visualRad,-visualRad,-visualRad);
+
+        ArrayList<Location> edges1 = new ArrayList<>(List.of(corner1, corner2, corner3, corner4));
+        ArrayList<Location> edges2 = new ArrayList<>(List.of(corner5, corner6, corner7, corner8));
+        ArrayList<Location> edges3 = new ArrayList<>(List.of(corner1, corner5, corner2, corner6,corner3,corner7,corner4,corner8));
+        for (int i = 0; i < 4; i++) {
+            createParticleLine(p,edges1.get(i),edges1.get((i + 1) % 4),dust,6.0,0.05);
+        }
+        for (int i = 0; i < edges2.size(); i++) {
+            createParticleLine(p,edges2.get(i),edges2.get((i + 1) % (4)),dust,6.0,0.05);
+        }
+        for (int i = 0; i < 8; i += 2) {
+            createParticleLine(p,edges3.get(i),edges3.get(((i + 1))),dust,6.0,0.05);
+        }
+
     }
 
-
+    public iceTimer currentIce;
 
     public class iceTimer extends BukkitRunnable {
 
         int timer = 0;
         Location loc;
-        ArrayList<Material> sphere = new ArrayList<Material>();
-        ArrayList<Location> sphereLocs = new ArrayList<Location>();
-
+        public ArrayList<Block> sphere = new ArrayList<Block>();
+        public ArrayList<FallingBlock> fallingSphere = new ArrayList<FallingBlock>();
         public iceTimer(Location loc) {
             this.loc = loc;
-            sphereLocs = sphere(loc, 4, true);
-            // Store original block types
-            for(Location l : sphereLocs) {
-                sphere.add(l.getBlock().getType());
+            this.loc.getWorld().playSound(loc,Sound.BLOCK_GLASS_BREAK,2.0f,1.5f);
+            for(Location l : sphere(loc, 4, true)) {
+                if (canPlaceBlock(l.getBlock())) {
+                    sphere.add(l.getBlock());
+                }
             }
         }
 
         @Override
         public void run() {
-            // Validity check - ensure world is still loaded
-            if(loc.getWorld() == null || !loc.isWorldLoaded()) {
-                this.cancel();
-                return;
-            }
-
             if(timer < 5*20) {
-                // Place ice blocks
-                for(Location l : sphereLocs) {
-                    if(!main.restricted.contains(l.getBlock().getType())) {
-                        l.getBlock().setType(Material.ICE);
+                for (Block b : sphere) {
+                    b.setType(Material.ICE);
+                }
+                for(Entity e : loc.getWorld().getNearbyEntities(loc,4,4,4)) {
+                    if (e.getLocation().toVector().subtract(loc.toVector()).length() < 3.7) {
+                        e.setFreezeTicks(150);
+                        if (e instanceof Player p) {
+                            p.playSound(loc,Sound.ENTITY_HORSE_BREATHE,1f,0.5f);
+                        }
                     }
                 }
-            } else {
-                // Restore original blocks
-                for(int i = 0; i < sphere.size() && i < sphereLocs.size(); i++) {
-                    if(!main.restricted.contains(sphereLocs.get(i).getBlock().getType())) {
-                        sphereLocs.get(i).getBlock().setType(sphere.get(i));
-                    }
+                loc.getWorld().spawnParticle(Particle.SNOWFLAKE,loc,5,2,2,2,0.2);
+
+            }  else {
+//                for (int i = 0; i < sphere.size(); i++)
+//                    if (canPlaceBlock(sphere(loc, 4, true).get(i).getBlock())) {
+//                        sphere(loc, 4, true).get(i).getBlock().setType(sphere.get(i));
+//                    }
+                for (Block b : sphere) {
+                    if (b.getType() == Material.ICE) b.setType(Material.AIR);
                 }
+                for (FallingBlock b : fallingSphere) {
+                    b.remove();
+                }
+                loc.getWorld().playSound(loc,Sound.BLOCK_GLASS_BREAK,2.0f,0.5f);
+                loc.getWorld().spawnParticle(Particle.SNOWFLAKE,loc,50,2,2,2,0.2);
                 this.cancel();
-                return;
             }
             timer++;
         }
 
+        public boolean canPlaceBlock(Block b) {
+
+           return (b.getType() == Material.AIR || !b.getType().isSolid()) && !main.restricted.contains(b.getType());
+        }
+
     }
 
-    public ArrayList<Location> sphere(Location location, int radius, boolean hollow) {
+    public static void createParticleLine(
+            Player pl,
+            Location loc1, Location loc2,
+            Particle.DustOptions dust,
+            double density,
+            double spread) {
+        Vector vecLine = (loc1.clone().toVector().subtract(loc2.clone().toVector()));
+        int count;
+
+        count = (int)(vecLine.length() * density);
+
+        for (int i = 0; i < count;i++) {
+            pl.getWorld().spawnParticle(
+                    Particle.DUST,
+                    loc2.clone().add(vecLine.clone().multiply(Math.random())),
+                    1,
+                    spread, spread, spread,
+                    0.02,
+                    dust,
+                    true
+
+            );
+        }
+    }
+
+    static public ArrayList<Location> sphere(Location location, int radius, boolean hollow) {
         ArrayList<Location> blocks = new ArrayList<Location>();
         World world = location.getWorld();
         int X = location.getBlockX();
         int Y = location.getBlockY();
         int Z = location.getBlockZ();
-        int radiusSquared = radius * radius;
+        int radiusSquared = radius * radius + 3;
 
         if (hollow) {
             for (int x = X - radius; x <= X + radius; x++) {
                 for (int y = Y - radius; y <= Y + radius; y++) {
                     for (int z = Z - radius; z <= Z + radius; z++) {
-                        if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) <= radiusSquared) {
+                        if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) < radiusSquared) {
                             Location block = new Location(world, x, y, z);
                             blocks.add(block);
                         }
@@ -229,7 +319,7 @@ public class Archer extends Kit {
             for (int x = X - radius; x <= X + radius; x++) {
                 for (int y = Y - radius; y <= Y + radius; y++) {
                     for (int z = Z - radius; z <= Z + radius; z++) {
-                        if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) <= radiusSquared) {
+                        if ((X - x) * (X - x) + (Y - y) * (Y - y) + (Z - z) * (Z - z) < radiusSquared) {
                             Location block = new Location(world, x, y, z);
                             blocks.add(block);
                         }
@@ -240,7 +330,7 @@ public class Archer extends Kit {
         }
     }
 
-    private ArrayList<Location> makeHollow(ArrayList<Location> blocks, boolean sphere){
+    static private ArrayList<Location> makeHollow(ArrayList<Location> blocks, boolean sphere){
         ArrayList<Location> edge = new ArrayList<Location>();
         if(!sphere){
             for(Location l : blocks){
@@ -285,18 +375,17 @@ public class Archer extends Kit {
 
     private ArrowType curArrow = ArrowType.FLAME;
 
-    String lightning = ChatColor.YELLOW + "Lightning";
-    String teleport = ChatColor.GREEN + "Teleport";
-    String ice = ChatColor.DARK_AQUA + "Ice";
-    String cyclone = ChatColor.WHITE + "Cyclone";
-    String gravity = ChatColor.GRAY + "Gravity";
-    String flame = ChatColor.RED + "Flame";
+    final String lightning = ChatColor.YELLOW + "Lightning";
+    final String teleport = ChatColor.GREEN + "Teleport";
+    final String ice = ChatColor.DARK_AQUA + "Ice";
+    final String cyclone = ChatColor.WHITE + "Cyclone";
+    final String gravity = ChatColor.GRAY + "Gravity";
+    final String flame = ChatColor.RED + "Flame";
 
     HashMap<ArrowType, Boolean> canShoot = new HashMap<ArrowType, Boolean>();
 
     public Archer(Main main, Player p, KitType archer) {
         super(main, p, archer);
-        ARROW_TYPE_KEY = new NamespacedKey(main, "arrow_type");
         p.getInventory().setHeldItemSlot(0);
         setupInitialInventory(p);
     }
@@ -325,6 +414,7 @@ public class Archer extends Kit {
         }
         p.getInventory().setHelmet(helmet);
         giveWool();
+        setHearts(16);
     }
 
     private void initializeCanShoot() {
@@ -337,6 +427,10 @@ public class Archer extends Kit {
         canShoot.put(arrowType, false);
         ItemStack arrow = p.getInventory().getItem(arrowTypeToSlot(arrowType));
 
+        setArrows();
+
+        setCooldown(getArrowCooldownName(arrowType), seconds, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+
         BukkitTask cool = new BukkitRunnable() {
             @Override
             public void run() {
@@ -345,13 +439,14 @@ public class Archer extends Kit {
                 ItemStack item = p.getInventory().getItem(slot);
                 if (item != null) {
                     ItemMeta meta = item.getItemMeta();
-                    meta.addEnchant(Enchantment.INFINITY, 1, true);
+                    meta.addEnchant(Enchantment.INFINITY, 1, true);  // true to allow unsafe enchantments
                     item.setItemMeta(meta);
                     p.getInventory().setItem(slot, item);
-                    playExp(1);
+                    setArrows();
+                    switchToBow(e.getHeldItemSlot());
                 }
             }
-        }.runTaskLater(main, seconds * 20);
+        }.runTaskLater(main, seconds * 20);  // Convert seconds to game ticks
         registerTask(cool);
     }
 
@@ -386,15 +481,17 @@ public class Archer extends Kit {
         for (ArrowType arrowType : ArrowType.values()) {
             int slot = arrowTypeToSlot(arrowType);
             String arrowName = arrowTypeToName(arrowType);
-            item = newItem(Material.ARROW, arrowName);  // Assuming newItem creates a new ItemStack
+            item = newItem(Material.TIPPED_ARROW, arrowName);  // Assuming newItem creates a new ItemStack
 
             if (canShoot.get(arrowType)) {
                 meta = item.getItemMeta();
                 meta.addEnchant(Enchantment.INFINITY, 1, true);  // Unsafe enchantment is allowed
+                ((PotionMeta) meta).setBasePotionType(getArrowPotionType(arrowType));
                 item.setItemMeta(meta);
-            }
+            } else item = newItem(Material.ARROW,ChatColor.DARK_GRAY + "Spent " + arrowName +" Arrow");
 
             p.getInventory().setItem(slot, item);
+
         }
     }
     public void setFlame() {
@@ -448,130 +545,90 @@ public class Archer extends Kit {
         }
     }
 
+    public PotionType getArrowPotionType(ArrowType arrowType) {
+        return switch (arrowType) {
+            case FLAME -> PotionType.HEALING;
+            case LIGHTNING -> PotionType.STRENGTH;
+            case TELEPORT -> PotionType.NIGHT_VISION;
+            case ICE -> PotionType.SWIFTNESS;
+            case CYCLONE -> PotionType.INVISIBILITY;
+            case GRAVITY -> PotionType.WEAKNESS;
+        };
+
+    }
+
+    public int getArrowCooldown(ArrowType arrowType) {
+        return switch (arrowType) {
+            case FLAME -> 0;
+            case LIGHTNING -> 6;
+            case TELEPORT -> 9;
+            case ICE -> 12;
+            case CYCLONE -> 17;
+            case GRAVITY -> 13;
+        };
+    }
+
+    public String getArrowCooldownName(ArrowType arrowType) {
+        return switch (arrowType) {
+            case FLAME -> ChatColor.RED + "🔥";
+            case LIGHTNING -> ChatColor.YELLOW + "⚡";
+            case TELEPORT -> ChatColor.GREEN + "⇄";
+            case ICE -> ChatColor.AQUA + "❄";
+            case CYCLONE -> ChatColor.WHITE + "☁";
+            case GRAVITY -> ChatColor.DARK_GRAY + "ʊ";
+        };
+    }
+
 
     public void bHit(ProjectileHitEvent event) {
-        // GET ARROW TYPE FROM PDC - not from curArrow!
-        if(!(event.getEntity() instanceof Arrow)) return;
+        Location hitLocation = null;
+        String arrowName;
 
-        Arrow arrow = (Arrow) event.getEntity();
-        String typeStr = arrow.getPersistentDataContainer().get(ARROW_TYPE_KEY, PersistentDataType.STRING);
+        arrowName = event.getEntity().getName();
+        arrowName = ChatColor.stripColor(arrowName);
 
-        // If no tag, it's not our arrow
-        if(typeStr == null) return;
-
-        ArrowType hitArrowType;
-        try {
-            hitArrowType = ArrowType.valueOf(typeStr);
-        } catch (IllegalArgumentException e) {
-            return; // Invalid arrow type
-        }
-
-        // Flame arrows don't have special hit effects (just normal fire)
-        if(hitArrowType == ArrowType.FLAME)
+        if(arrowName.toLowerCase() == "flame")
             return;
 
-        // Cooldown already started on shoot, just trigger effects on hit
-        if(event.getHitBlock() == null) {
-            // Hit entity
-            switch(hitArrowType) {
-                case LIGHTNING -> {
-                    event.getHitEntity().getLocation().getWorld().strikeLightning(event.getHitEntity().getLocation());
-                    break;
-                }
-                case ICE -> {
-                    BukkitTask t = new iceTimer(event.getHitEntity().getLocation()).runTaskTimer(main, 0L, 1L);
-                    registerTask(t);
-                    break;
-                }
-                case GRAVITY -> {
-                    gravity(event.getHitEntity().getLocation());
-                    break;
-                }
-                case CYCLONE -> {
-                    main.broadcast("cyclone");
-                    break;
-                }
-                case TELEPORT -> {
-                    // DIRECT HIT - Super swap: target + all nearby entities swap with shooter
-                    Entity target = event.getHitEntity();
-                    Location targetLoc = target.getLocation();
-                    Location shooterLoc = p.getLocation();
+        if (event.getHitBlock() != null) hitLocation = event.getHitBlock().getLocation();
+        if (event.getHitEntity() != null) hitLocation = event.getHitEntity().getLocation();
 
-                    // Get all entities within 3 blocks of the target
-                    Collection<Entity> nearbyEntities = targetLoc.getWorld().getNearbyEntities(targetLoc, 5, 5, 5);
+        if (hitLocation == null) return;
 
-                    // Play enderpearl sound at both locations
-                    targetLoc.getWorld().playSound(targetLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-                    shooterLoc.getWorld().playSound(shooterLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-
-                    // Teleport all nearby entities to shooter's location
-                    for(Entity e : nearbyEntities) {
-                        if(e.equals(p)) continue; // Don't teleport shooter yet
-                        if(e instanceof Player)
-                            ((Player) e).addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*3, 1));
-                        e.teleport(shooterLoc);
-                    }
-
-                    // Teleport shooter to target location
-                    p.teleport(targetLoc);
-                    main.broadcast("teleport - direct hit super swap!");
-                    break;
-                }
+        switch(arrowName.toLowerCase()) {
+            case "lightning" -> {
+                hitLocation.getWorld().strikeLightning(hitLocation);
+                hitLocation.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,hitLocation.add(0,1,0),60,0.5,1,0.5,0.3);
+                hitLocation.getWorld().spawnParticle(Particle.FIREWORK,hitLocation.add(0,1,0),30,0.5,1,0.5,0.3);
+                hitLocation.getWorld().spawnParticle(Particle.CLOUD,hitLocation.add(0,1,0),10,0.5,1,0.5,0);
+                hitLocation.getWorld().spawnParticle(Particle.FLASH,hitLocation.add(0,1,0),1);
+                break;
             }
-        } else {
-            // Hit block
-            switch(hitArrowType) {
-                case FLAME -> {
-                    event.getHitBlock().setType(Material.FIRE);
-                    break;
-                }
-                case LIGHTNING -> {
-                    event.getHitBlock().getLocation().getWorld().strikeLightning(event.getHitBlock().getLocation());
-                    break;
-                }
-                case ICE -> {
-                    BukkitTask t = new iceTimer(event.getHitBlock().getLocation()).runTaskTimer(main, 0L, 1L);
-                    registerTask(t);
-                    break;
-                }
-                case GRAVITY -> {
-                    gravity(event.getHitBlock().getLocation());
-                    break;
-                }
-                case CYCLONE -> {
-                    main.broadcast("cyclone");
-                    break;
-                }
-                case TELEPORT -> {
-                    // Arrow landed near (not direct hit) - Check for nearby players
-                    Location arrowLoc = event.getHitBlock().getLocation();
-                    Entity nearestPlayer = null;
-                    double nearestDist = 0.85; // Max distance to check (shorter range)
-
-                    // Find closest player within 2 blocks
-                    for(Entity e : arrowLoc.getWorld().getNearbyEntities(arrowLoc, 2, 2, 2)) {
-                        if(e instanceof Player && !e.equals(p)) {
-                            double dist = e.getLocation().distance(arrowLoc);
-                            if(dist < nearestDist) {
-                                nearestDist = dist;
-                                nearestPlayer = e;
-                            }
-                        }
-                    }
-
-                    // If found a nearby player, do simple swap
-                    if(nearestPlayer != null) {
-                        Location targetLoc = nearestPlayer.getLocation();
-                        Location shooterLoc = p.getLocation();
-
-                        // Play enderpearl sound at both locations
-                        targetLoc.getWorld().playSound(targetLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-                        shooterLoc.getWorld().playSound(shooterLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-
-                        nearestPlayer.teleport(shooterLoc);
-                        p.teleport(targetLoc);
-                        main.broadcast("teleport - proximity swap!");
-                    }
+            case "ice" -> {
+                iceTimer i = new iceTimer(hitLocation);
+                currentIce = i;
+                BukkitTask t = i.runTaskTimer(main, 0L, 1L);
+                registerTask(t);
+                break;
+            }
+            case "gravity" -> {
+                gravity(hitLocation);
+                break;
+            }
+            case "cyclone" -> {
+                main.broadcast("cyclone");
+                break;
+            }
+            case "teleport" -> {
+                if (event.getHitEntity() != null) {
+                    Location pLoc = p.getLocation();
+                    event.getHitEntity().teleport(pLoc);
+                    p.teleport(hitLocation);
+                    Particle.DustOptions d = new Particle.DustOptions(Color.fromRGB(136, 255, 136), 1.5F);
+                    createParticleLine(p,pLoc.add(0,1,0),hitLocation.add(0,1,0),d,4.0,0.2);
+                    p.getWorld().playSound(hitLocation,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
+                    p.getWorld().playSound(pLoc,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
+                    main.broadcast("teleport");
                     break;
                 }
             }
@@ -580,7 +637,10 @@ public class Archer extends Kit {
 
     public void handleItemSwitch(PlayerItemHeldEvent event) {
         setArrows();
-        switch(event.getNewSlot()) {
+        switchToBow(event.getNewSlot());
+    }
+    public void switchToBow(int slot) {
+        switch(slot) {
             case 0:
                 setFlame();
                 break;
@@ -601,4 +661,5 @@ public class Archer extends Kit {
                 break;
         }
     }
+
 }

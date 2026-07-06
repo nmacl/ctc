@@ -282,6 +282,27 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
                 return true;
             } else if(args[0].equalsIgnoreCase("holo")) {
                 spawnHeadDebugBoard(p);
+            } else if (args[0].equalsIgnoreCase("cooldown")) {
+
+                Kit k = (kit.kits.get(p.getUniqueId()));
+
+                if (k == null) {
+                    send(p, "No kit detected! This command requires a kit to use (for now)", ChatColor.DARK_AQUA);
+                } else if (args.length < 2) {
+                    send(p, "Usage: /ctc cooldown <default|seconds|precise>", ChatColor.RED);
+                } else if (args[1].equalsIgnoreCase("default")) {
+                    k.cooldownDisplayType = 0;
+                    send(p, "Cooldowns will now be displayed in dots and lines!", ChatColor.RED);
+                } else if (args[1].equalsIgnoreCase("seconds")) {
+                    k.cooldownDisplayType = 1;
+                    send(p, "Cooldowns will now be displayed in seconds!", ChatColor.BLUE);
+                } else if (args[1].equalsIgnoreCase("precise")) {
+                    k.cooldownDisplayType = 2;
+                    send(p, "Cooldowns will now be precise seconds!", ChatColor.AQUA);
+                } else {
+                    send(p, "Unknown cooldown type: " + args[1] + ". Use <default|seconds|precise>", ChatColor.RED);
+                }
+                return true;
             }
         }
 
@@ -298,53 +319,94 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
             boolean fire,
             boolean breaksBlocks,
             boolean damagesAllies,
-            String ability
+            String ability,
+            float falloff
     ) {
+
+        if (falloff < 0.0f) falloff = 0.0f; else if (falloff > 1.0f) falloff = 1.0f;
+
         Location center = l.clone().add(0, 1, 0);
         World world = center.getWorld();
 
-        world.createExplosion(center, 2f, fire, breaksBlocks);
+        float power = (maxDistance /3f);
+        if (power < 2.0) power = 2.0F;
+
+        world.createExplosion(center, power + ((float) maxDamage / 20), fire, breaksBlocks);
+        world.spawnParticle(Particle.FLASH,center,1,null);
+        world.spawnParticle(Particle.GUST_EMITTER_LARGE,center,1,null);
+        Bukkit.broadcastMessage("[DEBUG] Explosion at " + center);
 
         final int numberOfRays = 6;
         double[] offsets = {0, 1, 2, 3, 4, 5};
 
         for (Entity e : world.getNearbyEntities(center, maxDistance, maxDistance, maxDistance)) {
-            if (!(e instanceof Player target)) continue;
+            if (!(e instanceof Player)) continue;
+            Player target = (Player) e;
 
-            boolean isSelf = target.getUniqueId().equals(p.getUniqueId());
-
-            // Skip same-team only if not self (self always allowed)
-            if (!isSelf && !damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
+            if (!damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
+                Bukkit.broadcastMessage("[DEBUG] Skipping ally: " + target.getName());
                 continue;
             }
 
             double distance = center.distance(target.getLocation());
-            if (distance > maxDistance) continue;
+            if (distance > maxDistance) {
+                Bukkit.broadcastMessage("[DEBUG] Out of range: " + target.getName() + " @ " + String.format("%.2f", distance));
+                continue;
+            }
 
             int raysHit = 0;
             for (double offset : offsets) {
                 Location start = center.clone().add(0, offset, 0);
                 Vector dir = target.getLocation().toVector().subtract(start.toVector()).normalize();
                 RayTraceResult result = world.rayTraceBlocks(
-                        start, dir, distance, FluidCollisionMode.NEVER, true
+                        start,
+                        dir,
+                        distance,
+                        FluidCollisionMode.NEVER,
+                        true
                 );
-                if (result == null) raysHit++;
+                if (result == null) {
+                    raysHit++;
+                }
             }
 
-            if (raysHit == 0) continue;
+            Bukkit.broadcastMessage("[DEBUG] Rays hit on " + target.getName() + ": " + raysHit + "/" + numberOfRays);
+            if (raysHit == 0) {
+                Bukkit.broadcastMessage("[DEBUG] " + target.getName() + " is fully protected by obstacles.");
+                continue;
+            }
+
+            double calcFalloff = ((1 - ((distance / maxDistance) * falloff) ));
+
+            if (calcFalloff < 0.0f) calcFalloff = 0.0f; else if (calcFalloff > 1.0f) calcFalloff = 1.0f;
 
             double damageFactor = (double) raysHit / numberOfRays;
-            double damage = maxDamage * (1 - (distance / maxDistance)) * damageFactor;
-            if (damage <= 0) continue;
+            double damage = maxDamage * calcFalloff * damageFactor;
+            Bukkit.broadcastMessage("[DEBUG] Calculated damage for " + target.getName()
+                    + ": base=" + maxDamage
+                    + ", dist=" + String.format("%.2f", distance)
+                    + ", factor=" + String.format("%.2f", damageFactor)
+                    + " => damage=" + String.format("%.2f", damage)
+                    + " fallof" + String.format("%.2f",calcFalloff));
+            double newHealth = target.getHealth() - damage;
 
-            if (isSelf) {
-                // self damage: do NOT track
-                target.setHealth(Math.max(0.0, target.getHealth() - damage));
-            } else {
-                // tracked damage
-                combatTracker.setHealth(target, target.getHealth() - damage, p, ability);
-            }
+            combatTracker.setHealth(target, newHealth, p, ability);
+
         }
+
+    }
+
+    public void fakeExplode(
+            Player p,
+            Location l,
+            int maxDamage,
+            int maxDistance,
+            boolean fire,
+            boolean breaksBlocks,
+            boolean damagesAllies,
+            String ability
+    ) {
+        fakeExplode(p,l,maxDamage,maxDistance,fire,breaksBlocks,damagesAllies,ability,1.0f);
     }
 
     public ItemStack coreCrush() {
