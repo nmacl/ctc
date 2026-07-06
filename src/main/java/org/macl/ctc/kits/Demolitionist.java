@@ -2,6 +2,7 @@ package org.macl.ctc.kits;
 
 import net.minecraft.world.entity.Entity;
 import org.bukkit.*;
+import org.bukkit.Color;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -118,7 +119,7 @@ public class Demolitionist extends Kit {
             p.getWorld().playSound(fallMine.getLocation(),Sound.ITEM_TRIDENT_HIT,10f,0.3f);
             p.getWorld().playSound(fallMine.getLocation(),Sound.ENTITY_BREEZE_INHALE,10f,1.1f);
             p.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,fallMine.getLocation(),40,0.2,0.2,0.2,0.2);
-            p.getWorld().spawnParticle(Particle.FLASH,fallMine.getLocation(),3,0.2,0.2,0.2,0.2);
+            p.getWorld().spawnParticle(Particle.FLASH,fallMine.getLocation(),3,0.2,0.2,0.2,0.2,Color.WHITE);
             fallMine.setGravity(false);
             fallMine.setVelocity(fallMine.getVelocity().multiply(0.0));
 

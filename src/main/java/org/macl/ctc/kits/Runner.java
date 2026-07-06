@@ -3,6 +3,7 @@ package org.macl.ctc.kits;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
+import org.bukkit.Color;
 import org.bukkit.block.Block;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
@@ -199,7 +200,7 @@ public class Runner extends Kit {
                     p.getWorld().playSound(p.getLocation(),Sound.BLOCK_GLASS_BREAK,1.2f,1.5f);
 
                     p.getWorld().spawnParticle(Particle.GUST,p.getLocation().add(0,1,0),3,null);
-                    p.getWorld().spawnParticle(Particle.FLASH,p.getLocation().add(0,1,0),1,null);
+                    p.getWorld().spawnParticle(Particle.FLASH,p.getLocation().add(0,1,0),1,Color.WHITE);
 
                     for(Entity e : p.getNearbyEntities(2.5, 2.5, 2.5)) {
                         if(es.contains(e)) continue;

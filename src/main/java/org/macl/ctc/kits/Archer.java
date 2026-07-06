@@ -2,6 +2,7 @@ package org.macl.ctc.kits;
 
 import com.zaxxer.hikari.util.FastList;
 import org.bukkit.*;
+import org.bukkit.Color;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.enchantments.Enchantment;
@@ -601,7 +602,7 @@ public class Archer extends Kit {
                 hitLocation.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,hitLocation.add(0,1,0),60,0.5,1,0.5,0.3);
                 hitLocation.getWorld().spawnParticle(Particle.FIREWORK,hitLocation.add(0,1,0),30,0.5,1,0.5,0.3);
                 hitLocation.getWorld().spawnParticle(Particle.CLOUD,hitLocation.add(0,1,0),10,0.5,1,0.5,0);
-                hitLocation.getWorld().spawnParticle(Particle.FLASH,hitLocation.add(0,1,0),1);
+                hitLocation.getWorld().spawnParticle(Particle.FLASH,hitLocation.add(0,1,0),1,Color.WHITE);
                 break;
             }
             case "ice" -> {
