@@ -332,8 +332,8 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         if (power < 2.0) power = 2.0F;
 
         world.createExplosion(center, power + ((float) maxDamage / 20), fire, breaksBlocks);
-        world.spawnParticle(Particle.FLASH,center,1,null);
-        world.spawnParticle(Particle.GUST_EMITTER_LARGE,center,1,null);
+        world.spawnParticle(Particle.FLASH, center, 1, Color.WHITE);
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, center, 3);
         Bukkit.broadcastMessage("[DEBUG] Explosion at " + center);
 
         final int numberOfRays = 6;
