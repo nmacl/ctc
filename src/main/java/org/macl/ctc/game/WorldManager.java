@@ -74,42 +74,63 @@ public class WorldManager {
             // Load the world synchronously after copying is complete
             Bukkit.getScheduler().runTask(main, () -> {
 
-                // Check if replacement is "shattered" or "graveyard"
                 if (replacement.equalsIgnoreCase("shattered") || replacement.equalsIgnoreCase("graveyard")) {
-                    // Determine the environment
-                    String environment = replacement.equalsIgnoreCase("shattered") ? "end" : "nether";
+                    // Unload the world first
+                    World existingWorld = Bukkit.getWorld(worldName);
+                    if (existingWorld != null) {
+                        Bukkit.unloadWorld(worldName, false);
+                        main.broadcast("Unloaded existing world '" + worldName + "'.");
+                    }
 
-                    // Use Multiverse-Core command to import the world
-                    String command = "mv import " + worldName + " " + environment;
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                    main.broadcast("Imported world '" + worldName + "' using Multiverse-Core as " + environment + " world.");
-
-                    // Remove the world from Multiverse-Core configuration
-                    removeWorldFromMultiverseConfig(worldName);
-
-                    // Reload Multiverse-Core configuration
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv reload");
-
-                    // Wait briefly to ensure the world is loaded
+                    // Wait a second for unload to complete
                     new BukkitRunnable() {
-                        int attempts = 0;
-
                         @Override
                         public void run() {
-                            World importedWorld = Bukkit.getWorld(worldName);
-                            if (importedWorld != null) {
-                                main.broadcast("World '" + worldName + "' has been successfully loaded.");
-                                center = getCenter();
-                                cancel();
-                            } else {
-                                attempts++;
-                                if (attempts >= 10) { // Retry up to 10 times
-                                    main.broadcast("Failed to load world '" + worldName + "' after importing with Multiverse-Core.");
-                                    cancel();
+                            // Delete from Multiverse
+                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mvdelete map");
+
+                            // Wait another few seconds before importing
+                            new BukkitRunnable() {
+                                @Override
+                                public void run() {
+                                    // Determine the environment
+                                    String environment = replacement.equalsIgnoreCase("shattered") ? "the_end" : "nether";
+
+                                    // Use Multiverse-Core command to import the world
+                                    String command = "mv import " + worldName + " " + environment;
+                                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                                    main.broadcast("Imported world '" + worldName + "' using Multiverse-Core as " + environment + " world.");
+
+                                    // Remove the world from Multiverse-Core configuration
+                                    removeWorldFromMultiverseConfig(worldName);
+
+                                    // Reload Multiverse-Core configuration
+                                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv reload");
+
+                                    // Wait briefly to ensure the world is loaded
+                                    new BukkitRunnable() {
+                                        int attempts = 0;
+
+                                        @Override
+                                        public void run() {
+                                            World importedWorld = Bukkit.getWorld(worldName);
+                                            if (importedWorld != null) {
+                                                main.broadcast("World '" + worldName + "' has been successfully loaded.");
+                                                center = getCenter();
+                                                cancel();
+                                            } else {
+                                                attempts++;
+                                                if (attempts >= 10) {
+                                                    main.broadcast("Failed to load world '" + worldName + "' after importing with Multiverse-Core.");
+                                                    cancel();
+                                                }
+                                            }
+                                        }
+                                    }.runTaskTimer(main, 20L, 20L);
                                 }
-                            }
+                            }.runTaskLater(main, 60L); // 3 seconds after mvdelete
                         }
-                    }.runTaskTimer(main, 20L, 20L); // Check every second
+                    }.runTaskLater(main, 20L); // 1 second after unloa
                 } else {
                     // Use WorldCreator to load the world
                     WorldCreator worldCreator = new WorldCreator(worldName);
@@ -154,44 +175,6 @@ public class WorldManager {
         }
     }
 
-    public void clean(Player p1) {
-        isUnloading = true;
-        // fix this to kick back with bungee cord
-        boolean red = false;
-        if(main.game.redHas(p1))
-            red = true;
-        else
-            red = false;
-
-        String text = "";
-        if(red) {
-            text = p1.getName() + ChatColor.RED + " has destroyed the enemy core! Congratulations red team! Thanks for playing :)";
-            //for(Player p : game.getReds())
-                //main.getStats().recordWin(p.getUniqueId());
-        }
-        else {
-            text = p1.getName() + ChatColor.BLUE + " has destroyed the enemy core! Congratulations blue team! Thanks for playing :)";
-            //for(Player p : game.getBlues())
-                //main.getStats().recordWin(p.getUniqueId());
-        }
-
-        for(Player p : Bukkit.getOnlinePlayers()) {
-            p.teleport(Bukkit.getWorld("world").getSpawnLocation());
-        }
-
-
-        main.broadcast(text);
-
-        loadWorld("map", main.map);
-        //unload map
-
-        //replace map with world creator x
-
-        //load map
-
-        //create command to teleport there
-
-    }
 
     public Location getRed() {
         String path = main.map + ".red";

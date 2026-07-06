@@ -205,6 +205,7 @@ public class Builder extends Kit {
             this.dir = dire;
             woolType = (main.game.redHas(p)) ? Material.ORANGE_WOOL : Material.LIGHT_BLUE_WOOL;
             loc.setY(loc.getBlockY() - 1);
+            bridge = true;
         }
 
         //north = -z, south = +z, east = +x, west = -x

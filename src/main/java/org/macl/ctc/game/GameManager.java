@@ -248,6 +248,13 @@ public class GameManager {
             new BukkitRunnable() {
                 @Override
                 public void run() {
+                    // Update database to show server is restarting
+                    String serverName = System.getenv("SERVER_NAME");
+                    if (serverName == null || serverName.isEmpty()) {
+                        serverName = "unknown";
+                    }
+                    main.getDatabase().updateServerMap(serverName, "Restarting...");
+
                     Bukkit.shutdown();
                 }
             }.runTaskLater(main, 100L);
@@ -328,22 +335,22 @@ public class GameManager {
         main.broadcast(ChatColor.GOLD + "=== Live Game Awards ===");
 
         award.apply(
-                p -> sm.get(p.getUniqueId()).kills(),
+                p -> sm.getSessionStats(p.getUniqueId()).kills(),
                 ChatColor.RED +   "⫸ Offensive MVP(s): "
         );
 
         award.apply(
-                p -> sm.get(p.getUniqueId()).captures(),
+                p -> sm.getSessionStats(p.getUniqueId()).captures(),
                 ChatColor.AQUA +  "⫸ Defense MVP(s): "
         );
 
         award.apply(
-                p -> sm.get(p.getUniqueId()).coreCracks(),
+                p -> sm.getSessionStats(p.getUniqueId()).coreCracks(),
                 ChatColor.DARK_PURPLE + "⫸ Core MVP(s): "
         );
 
         award.apply(
-                p -> sm.get(p.getUniqueId()).deaths(),
+                p -> sm.getSessionStats(p.getUniqueId()).deaths(),
                 ChatColor.DARK_RED + "⫸ LVP(s): "
         );
 
@@ -390,6 +397,14 @@ public class GameManager {
             @Override
             public void run() {
                 main.getLogger().info("Game ended - exiting JVM for container restart.");
+
+                // Update database to show server is restarting
+                String serverName = System.getenv("SERVER_NAME");
+                if (serverName == null || serverName.isEmpty()) {
+                    serverName = "unknown";
+                }
+                main.getDatabase().updateServerMap(serverName, "Restarting...");
+
                 // System.exit ensures Docker sees the process end and restarts the container
                 Bukkit.shutdown();
             }

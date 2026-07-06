@@ -114,6 +114,28 @@ public class StatsManager {
         });
     }
 
+    /** Get only the stats from the current game session (delta from session start) */
+    public PlayerStats getSessionStats(UUID id) {
+        PlayerStats current = cache.get(id);
+        PlayerStats start = sessionStart.get(id);
+
+        if (current == null || start == null) {
+            return new PlayerStats(0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
+        // Return the delta (stats gained this session only)
+        return new PlayerStats(
+            current.kills() - start.kills(),
+            current.deaths() - start.deaths(),
+            current.wins() - start.wins(),
+            current.captures() - start.captures(),
+            current.coreCracks() - start.coreCracks(),
+            current.gamesPlayed() - start.gamesPlayed(),
+            current.damageDealt() - start.damageDealt(),
+            current.damageTaken() - start.damageTaken()
+        );
+    }
+
     /** Get all stats entries for iteration */
     public java.util.Set<java.util.Map.Entry<UUID, PlayerStats>> entrySet() {
         return cache.entrySet();

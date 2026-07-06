@@ -364,6 +364,10 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         return stats;
     }
 
+    public DatabaseManager getDatabase() {
+        return db;
+    }
+
     public HologramManager getHologramManager() {
         return hologramManager;
     }

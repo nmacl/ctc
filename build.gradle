@@ -76,7 +76,7 @@ tasks {
 task copyToServer(type: Copy) {
     dependsOn reobfJar
     from reobfJar.outputJar
-    into 'C:/Users/nmacl/OneDrive/Desktop/SERVER23/plugins'
+    into 'C:/Users/nmacl/OneDrive/Desktop/CTC-Docker/SERVER23/plugins'
 
     doLast {
         println "Successfully copied to SERVER23/plugins/"

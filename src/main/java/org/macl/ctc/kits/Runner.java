@@ -91,7 +91,7 @@ public class Runner extends Kit {
         setCooldown("Polar", 4, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
 
         int clocks = p.getInventory().first(Material.CLOCK);
-        p.getInventory().getItem(logs).setAmount(p.getInventory().getItem(clocks).getAmount() - 1);
+        p.getInventory().getItem(clocks).setAmount(p.getInventory().getItem(clocks).getAmount() - 1);
         
         // Register the task properly
         BukkitTask fieldTask = new BukkitRunnable() {
