@@ -629,7 +629,7 @@ public class GameManager {
         attribute.setBaseValue(20.0);
         p.setHealth(attribute.getDefaultValue());
         p.setFoodLevel(20);
-        p.setSaturation(20);
+        p.setSaturation(0);
 
         // 3. Reset Experience and Level
         p.setTotalExperience(0);
@@ -728,10 +728,34 @@ public class GameManager {
     }
 
     public boolean redHas(Player p) {
+        if (main.game != null && !main.game.started) { // change conditions to make testing outside matches possible
+            Scoreboard score = Bukkit.getScoreboardManager().getMainScoreboard();
+
+            for (Team team : score.getTeams()) {
+                if (team.hasEntry(p.getName())) {
+                    if (team.getName().equalsIgnoreCase("red")) return true;
+                }
+            }
+
+            return false;
+        }
+
         return getRed() != null && getRed().hasEntry(p.getName());
     }
 
     public boolean blueHas(Player p) {
+        if (main.game != null && !main.game.started) { // change conditions to make testing outside matches possible
+            Scoreboard score = Bukkit.getScoreboardManager().getMainScoreboard();
+
+            for (Team team : score.getTeams()) {
+                if (team.hasEntry(p.getName())) {
+                    if (team.getName().equalsIgnoreCase("blue")) return true;
+                }
+            }
+
+            return false;
+        }
+
         return getBlue() != null && getBlue().hasEntry(p.getName());
     }
 

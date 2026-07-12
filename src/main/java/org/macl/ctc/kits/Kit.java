@@ -5,9 +5,11 @@ import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -16,6 +18,7 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 
 import java.util.ArrayList;
@@ -25,6 +28,9 @@ import java.util.UUID;
 
 public class Kit implements Listener {
     public Main main;
+    public int cooldownDisplayType;
+    public boolean displayCooldowns = true;
+    public Vector realVelocity;
     KitType type;
     Player p;
     PlayerInventory e;
@@ -81,6 +87,7 @@ public class Kit implements Listener {
     public void setHearts(double d) {
         AttributeInstance playerAttribute = p.getAttribute(Attribute.MAX_HEALTH);
         playerAttribute.setBaseValue(d);
+        p.setHealth(d);
     }
 
     public Kit(Main main, Player p, KitType type) {
@@ -106,21 +113,172 @@ public class Kit implements Listener {
         }
         AttributeInstance playerAttribute = p.getAttribute(Attribute.MAX_HEALTH);
         playerAttribute.setBaseValue(20);
+        AttributeInstance armorAttribute = p.getAttribute(Attribute.ARMOR);
+        armorAttribute.setBaseValue(-30);
+
+        p.setUnsaturatedRegenRate(99999999);
+        p.setSaturatedRegenRate(15); // out of combat healing
+        hungerProcess = new HungerRegenProcess();
+        runTaskTimer(hungerProcess,0,1L);
     }
 
-    private String getProgressIndicator(double progress) {
+    public final HungerRegenProcess hungerProcess;
+
+    public class HungerRegenProcess extends BukkitRunnable {
+
+        boolean hidden = true; //Displays the Combat Timer as hunger if false. Could probably become a setting in the far far future
+        int hiddenHunger = 20;
+
+        int hungerTarget = 20;
+        int onDamageTarget = 7;
+        int hungerRegainBuffer = 0; //After taking damage, the buffer will count down before being able to tick the combat interval.
+        int hungerRegainInterval = 20; //Combat period, it takes (Interval*(20 - onDamageTarget) in ticks) to leave combat after taking damage
+        int currentRegainInterval = 20; // Additionally, every interval regains 0.5 HP to the player
+
+
+        public void run() {
+            if (getHunger() != hungerTarget) {
+                if (getHunger() < hungerTarget) {
+                    setHunger(getHunger() + 1);
+
+                } else if (getHunger() > hungerTarget) {
+                    setHunger(getHunger() - 1);
+                    currentRegainInterval++;
+                }
+            }
+
+            if (hungerTarget < 20) {
+
+                if (hungerRegainBuffer > 0) {
+                    hungerRegainBuffer--;
+                } else if (currentRegainInterval > 0) {
+                    currentRegainInterval--;
+                } else {
+                    currentRegainInterval = hungerRegainInterval;
+                    hungerTarget++;
+                    if (p.getHealth() != p.getAttribute(Attribute.MAX_HEALTH).getValue()) {
+                        p.addPotionEffect(new PotionEffect(PotionEffectType.INSTANT_HEALTH, 1, 123));
+                    }
+                }
+
+            } else {
+                p.setSaturation(99999f);
+            }
+
+
+        }
+
+        public void setHunger(int hungy) {
+            if (!hidden) {
+                p.setFoodLevel(hungy);
+            } else {
+                hiddenHunger = hungy;
+            }
+        }
+
+        public int getHunger() {
+            if (!hidden) {
+                return p.getFoodLevel();
+            } else {
+                return hiddenHunger;
+            }
+        }
+
+        public void onDamage() {
+            hungerTarget = onDamageTarget;
+            hungerRegainBuffer = 30;
+            if (p.getSaturation() > 20) {
+                p.setSaturation(0);
+            }
+        }
+
+    }
+
+    public void procHungerDamage() {
+        if (hungerProcess != null) {
+            hungerProcess.onDamage();
+        }
+    }
+
+    public void setHungerOnHit(int hungy) {
+        if (hungerProcess != null) {
+            hungerProcess.onDamageTarget = hungy;
+        }
+    }
+
+    public Vector getRealVelocity() {
+        Vector c = realVelocity.clone();
+        return c;
+    }
+
+    public boolean isOnGround() {
+        boolean onGround = false;
+
+        ArrayList<Boolean> locBelowsSolid = new ArrayList<>();
+
+        locBelowsSolid.add(p.getLocation().add(0,-0.2,0).getBlock().isSolid());
+        for (int x = -1; x <= 1; x += 2) {
+            for (int z = -1; z <= 1; z += 2) {
+                Block block = p.getLocation().add(0.3 * x,-0.2,0.3 * z).getBlock();
+                locBelowsSolid.add(block.isCollidable());
+            }
+        }
+
+        boolean yLevel = Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)) <= 0.1;
+//        boolean fallDistZero = Math.abs((Math.floor(p.getFallDistance() * 100) / 100)) <= 0.1;
+        main.broadcast("" + Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)));
+
+        onGround = yLevel && locBelowsSolid.contains(true);
+
+        return onGround;
+    }
+
+    public static String getProgressIndicator(double progress,int stages,ChatColor full,ChatColor empty) {
         StringBuilder sb = new StringBuilder();
-        int stages = 10;
-        int currentStage = (int) (progress * stages);
+        int currentStage = (int) Math.ceil(progress * stages);
 
         for (int i = 0; i < stages; i++) {
             if (i < currentStage) {
-                sb.append(ChatColor.GREEN).append("|");
+                sb.append(full).append("|");
             } else {
-                sb.append(ChatColor.RED).append("|");
+                sb.append(empty).append("|");
             }
         }
         return sb.toString();
+    }
+
+    public static String createProgressTime(double time,double originalTime,boolean precise,boolean bold) {
+        String s = "";
+        if (!precise) {
+            time = Math.ceil(time);
+            originalTime = Math.ceil(originalTime);
+        }
+        double progress = (time / originalTime);
+        ChatColor color;
+
+        if (progress > 0.66) {
+            color = ChatColor.RED;
+        } else if (progress > 0.33) {
+            color = ChatColor.YELLOW;
+        } else {
+            color = ChatColor.GREEN;
+        }
+
+        if (precise) {
+            s = String.format("%.1f", time);
+        } else {
+            s = String.format("%.0f", time);
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        if (bold) {
+            s = ("" + color +""+ ChatColor.BOLD +""+ ChatColor.ITALIC + s);
+        } else {
+            s = ("" + color +""+ ChatColor.ITALIC + s);
+        }
+
+        return s;
     }
 
     /**
@@ -172,13 +330,14 @@ public class Kit implements Listener {
         private int originalTime;
         private String abilityName;
         private int timeLeft;  // Declare timeLeft as an instance variable
+        private int bufferOut = 80;
 
         public Cooldown(Kit kit, Player player, String abilityName, int seconds, Sound endSound, Runnable onComplete) {
             this.player = player;
             this.abilityName = abilityName;
-            this.originalTime = seconds;
+            this.originalTime = seconds * 20;
             this.active = true;
-            this.timeLeft = seconds;
+            this.timeLeft = seconds * 20;
 
             task = new BukkitRunnable() {
                 public void run() {
@@ -187,28 +346,44 @@ public class Kit implements Listener {
                         return;
                     }
                     if (timeLeft <= 0) {
-                        onComplete.run();
-                        player.playSound(player.getLocation(), endSound, 1, 1);
-                        active = false;
-                        this.cancel();
+                        if (active) {
+                            onComplete.run();
+                            player.playSound(player.getLocation(), endSound, 1, 1);
+                            active = false;
+                        } else if (bufferOut > 0) {
+                            bufferOut--;
+                        } else {
+                            this.cancel();
+                        }
                     } else {
                         timeLeft--;  // Update timeLeft here
                     }
                     kit.updateCooldowns();  // Notify the Kit to update the action bar
                 }
-            }.runTaskTimer(main, 0L, 20L);  // Make sure kit can provide access to main
+            }.runTaskTimer(main, 0L, 1L);  // Make sure kit can provide access to main
             registerTask(task);
         }
 
         public String getProgressIndicator() {
             double progress = (double) (originalTime - timeLeft) / originalTime;
+            switch (cooldownDisplayType) {
+                case 0 -> {
+                    return createProgressDots(progress);
+                }
+                case 1 -> {
+                    return createProgressTime(((double) timeLeft / 20),((double) originalTime / 20),false,false);
+                }
+                case 2 -> {
+                    return createProgressTime(((double) timeLeft / 20),((double) originalTime / 20),true,false);
+                }
+            }
             return createProgressDots(progress);
         }
 
         private String createProgressDots(double progress) {
             int stages = 9; // Total number of stages for detailed progression
             int currentStage = (int) (progress * stages);
-            int[] thresholds = {1, 3, 5, 6, 7, 8}; // Thresholds for changing dot colors
+            int[] thresholds = {1, 3, 5, 6, 7, 9}; // Thresholds for changing dot colors
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 3; i++) {
                 if (currentStage >= thresholds[i + 3]) {
@@ -235,6 +410,8 @@ public class Kit implements Listener {
     }
 
     public void updateCooldowns() {
+        if (!displayCooldowns) return;
+
         StringBuilder message = new StringBuilder();
         cooldowns.forEach((ability, cooldown) -> {
             if (cooldown.isActive()) {
@@ -258,16 +435,17 @@ public class Kit implements Listener {
 
     }
 
-    class RegenItem {
+    public class RegenItem {
         private Player player;
         private BukkitTask task;
         private ItemStack item;
         private int maxAmt;
         private int slot;
         private String itemName;
-        private int originalTime;
-        private int timeLeft;
-        private boolean active;
+        public int originalTime;
+        public int timeLeft;
+        public boolean active;
+        public boolean paused;
 
         public RegenItem(Kit kit, Player player, String itemName, ItemStack item, int seconds, int maxAmt, int slot) {
             this.player = player;
@@ -275,9 +453,10 @@ public class Kit implements Listener {
             this.item = item;
             this.maxAmt = maxAmt;
             this.slot = slot;
-            this.originalTime = seconds;
-            this.timeLeft = seconds;
+            this.originalTime = seconds * 20;
+            this.timeLeft = seconds * 20;
             this.active = true;
+            this.paused = false;
 
             task = new BukkitRunnable() {
                 public void run() {
@@ -286,6 +465,8 @@ public class Kit implements Listener {
                         return;
                     }
 
+                    if (paused) return;
+
                     int itemCount = getCurrentItemCount();
 
                     // Check if the item count is below maximum allowed
@@ -293,7 +474,7 @@ public class Kit implements Listener {
                         if (timeLeft <= 0) {
                             item.setAmount(itemCount + 1);
                             player.getInventory().setItem(slot, item);
-                            timeLeft = originalTime;
+                            timeLeft += originalTime;
                         } else {
                             timeLeft--;
                         }
@@ -303,11 +484,11 @@ public class Kit implements Listener {
                         timeLeft = originalTime;
                     }
                 }
-            }.runTaskTimer(kit.main, 0L, 20L);
+            }.runTaskTimer(kit.main, 0L, 1L);
             registerTask(task);
         }
 
-        private int getCurrentItemCount() {
+        public int getCurrentItemCount() {
             int itemCount = 0;
             for (ItemStack stack : player.getInventory().getContents()) {
                 if (stack != null && stack.isSimilar(item)) {
@@ -318,6 +499,23 @@ public class Kit implements Listener {
         }
 
         public String getProgressIndicator() {
+
+            switch (cooldownDisplayType) {
+                case 0 -> {
+                    return getProgressIndicator(ChatColor.GREEN,ChatColor.RED);
+                }
+                case 1 -> {
+                    return createProgressTime(((double) timeLeft / 20),((double) originalTime / 20),false,true);
+                }
+                case 2 -> {
+                    return createProgressTime(((double) timeLeft / 20),((double) originalTime / 20),true,true);
+                }
+            }
+
+            return getProgressIndicator(ChatColor.GREEN,ChatColor.RED);
+        }
+
+        public String getProgressIndicator(ChatColor full, ChatColor empty) {
             if (getCurrentItemCount() >= maxAmt) {
                 return ""; // No indicator if at max amount
             }
@@ -384,13 +582,24 @@ public class Kit implements Listener {
         return item;
     }
 
-    public void giveWool() {
+    public void onWoolOut() {
+        if (isOnCooldown("wool")) return;
+        setCooldown("wool",5,Sound.BLOCK_WOOL_PLACE, () ->{
+            giveWool(8);
+        });
+    }
+
+    public void giveWool(int amount) {
         Material wool = Material.WHITE_WOOL;
         if(main.game.redHas(p))
             wool = Material.RED_WOOL;
         if(main.game.blueHas(p))
             wool = Material.BLUE_WOOL;
-        p.getInventory().addItem(new ItemStack(wool, 64));
+        p.getInventory().addItem(new ItemStack(wool, amount));
+    }
+
+    public void giveWool() {
+        giveWool(64);
     }
 
     public void playExp(float level) {

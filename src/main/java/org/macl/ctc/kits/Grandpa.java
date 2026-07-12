@@ -2,9 +2,8 @@ package org.macl.ctc.kits;
 
 import org.bukkit.*;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.ShulkerBullet;
-import org.bukkit.entity.SmallFireball;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.*;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -19,13 +18,19 @@ import java.util.Random;
 
 public class Grandpa extends Kit {
 
-    private int maxAmmo = 2;
+    private final int maxAmmo = 2;
     private int reloadTime = 3;
     private int ammo = maxAmmo;
 
-    private int maxPepperAmmo = 3;
+    private boolean finalShotBoosted = false;
+    public boolean finalShotCanExplode = false;
+
+    private final int maxPepperAmmo = 3;
     private int pepperReloadTime = 9;
     private int pepperAmmo = maxPepperAmmo;
+
+    ItemStack shotgun = newItem(Material.PRISMARINE_SHARD, ChatColor.GRAY + "Slugged Shotgun", 2);
+    ItemStack peppergun = newItem(Material.PRISMARINE_CRYSTALS, ChatColor.YELLOW + "Peppergun", 3);
 
     public boolean fallImmune = false;
 
@@ -36,8 +41,8 @@ public class Grandpa extends Kit {
 
         // Set up player's inventory
         e.setHelmet(newItem(Material.IRON_HELMET, ChatColor.DARK_GREEN + "Veteran's Helmet"));
-        e.setItem(0, newItem(Material.PRISMARINE_SHARD, ChatColor.GRAY + "Slugged Shotgun"));
-        e.setItem(1, newItem(Material.PRISMARINE_CRYSTALS, ChatColor.YELLOW + "Peppergun"));
+        e.addItem(shotgun);
+        e.addItem(peppergun);
         e.setItem(2, newItem(Material.HONEY_BOTTLE, ChatColor.GOLD + "Booze"));
         e.setItem(3, newItem(Material.LADDER, "Old Ladder", 24));
         giveWool();
@@ -48,26 +53,76 @@ public class Grandpa extends Kit {
     public void shootGun() {
         if (ammo > 0) {
             ammo--;
+
+            setItemAmount(0,ammo);
+
             p.getWorld().playSound(p.getLocation(),
                     Sound.ENTITY_FIREWORK_ROCKET_BLAST,
                     1f, 0.1f);
 
             Vector dir = p.getLocation().getDirection().multiply(0.4);
-            SmallFireball bullet = p.getWorld()
-                    .spawn(p.getEyeLocation().subtract(0, 0.5, 0),
-                            SmallFireball.class);
+
+            Projectile bullet;
+
+            if ((finalShotBoosted && ammo == 1)) {
+                e.getItem(0).addUnsafeEnchantment(Enchantment.FIRE_ASPECT,0);
+            }
+
+            if (!(finalShotBoosted && ammo == 0)) {
+                bullet = p.getWorld()
+                        .spawn(p.getEyeLocation().subtract(0, 0.5, 0),
+                                SmallFireball.class);
+            } else {
+                finalShotBoosted = false;
+                finalShotCanExplode = true;
+                bullet = p.getWorld()
+                        .spawn(p.getEyeLocation().subtract(0, 0.5, 0),
+                                Fireball.class);
+                p.getWorld().playSound(p.getLocation(),
+                        Sound.ENTITY_BLAZE_SHOOT,
+                        1f, 0.2f);
+            }
+
             bullet.setShooter(p);
-            bullet.setVelocity(dir.multiply(1.6));
+            dir.multiply(1.6);
+            bullet.setVelocity(dir.clone().multiply(5.5));
+
+//            bullet.setIsIncendiary(p.hasPotionEffect(PotionEffectType.DARKNESS));
+
+            new BukkitRunnable() {
+                int ticks = 0;
+                final int duration = 12;
+
+                public void run() {
+                    ticks++;
+                    if (ticks > 2) {
+                        p.getWorld().spawnParticle(
+                                Particle.LARGE_SMOKE,
+                                bullet.getLocation(),
+                                6,
+                                0, 0, 0,
+                                0.0,
+                                null,
+                                true);
+                    }
+
+                    if (ticks >= duration) {
+                        bullet.remove();
+                        cancel();
+                    }
+                }
+
+            }.runTaskTimer(main, 0, 1L);
 
             // knockback
-            double airLaunchModifier = -1.05;
-            if (p.isOnGround()) {
-                airLaunchModifier = 0.2;
-            } else {
-                Vector r = dir.multiply((airLaunchModifier));
-                r.setY(r.getY() * 1.2);
-                p.setVelocity(p.getVelocity().add(r));
+            double airLaunchModifier = -0.175;
+            if (!isOnGround()) {
+                airLaunchModifier = -1.25;
             }
+
+            Vector r = dir.multiply((airLaunchModifier));
+            r.setY(r.getY() * 1.2);
+            p.setVelocity(p.getVelocity().add(r));
 
             fallImmune = true;
 
@@ -96,13 +151,12 @@ public class Grandpa extends Kit {
             extraReloadTime = 2;
         }
 
-        main.broadcast(Integer.toString(extraReloadTime));
+//        main.broadcast(Integer.toString(extraReloadTime));
 
         setCooldown("Shotgun", reloadTime + extraReloadTime, Sound.ITEM_ARMOR_EQUIP_IRON, () -> {
             // onComplete!
             ammo = maxAmmo;
-            e.setItem(0, newItem(Material.PRISMARINE_SHARD,
-                    ChatColor.GRAY + "Slugged Shotgun"));
+            e.setItem(0, shotgun);
             p.playSound(p.getLocation(),
                     Sound.ITEM_ARMOR_EQUIP_IRON,
                     1f, 0.5f);
@@ -112,6 +166,9 @@ public class Grandpa extends Kit {
     public void shootPepper() {
         if (pepperAmmo > 0) {
             pepperAmmo--;
+
+            setItemAmount(1,pepperAmmo);
+
             p.getWorld().playSound(p.getLocation(),
                     Sound.ENTITY_FIREWORK_ROCKET_BLAST,
                     1f, 1.5f);
@@ -128,7 +185,7 @@ public class Grandpa extends Kit {
                 shots.add(bullet);
                 bullet.setShooter(p);
                 bullet.setVelocity(randDir.multiply(1.5));
-                randDir = randomizeVectorAngle(dir,20);
+                randDir = randomizeVectorAngle(dir,0.2);
 
 
             }
@@ -173,10 +230,8 @@ public class Grandpa extends Kit {
                 1f, 1.5f);
 
         setCooldown("Peppergun", pepperReloadTime, Sound.ITEM_ARMOR_EQUIP_CHAIN, () -> {
-            // onComplete!
             pepperAmmo = maxPepperAmmo;
-            e.setItem(1, newItem(Material.PRISMARINE_CRYSTALS,
-                    ChatColor.YELLOW + "Peppergun"));
+            e.setItem(1, peppergun);
             p.playSound(p.getLocation(),
                     Sound.ITEM_ARMOR_EQUIP_CHAIN,
                     1f, 1.5f);
@@ -184,99 +239,65 @@ public class Grandpa extends Kit {
     }
 
     public void drinkBooze() {
-        // Don't start if no booze or already in booze cooldown
-        if (!e.contains(Material.HONEY_BOTTLE) || isOnCooldown("Booze")) return;
+        if (isOnCooldown("Booze")) return;
 
-        // 1) Consume & show empty flask
         e.setItem(2, newItemEnchanted(
                 Material.GLASS_BOTTLE,
                 ChatColor.DARK_RED + "Empty Flask",
                 Enchantment.SHARPNESS, 3
         ));
 
-        // 2) Apply effects
-        p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 20 * 12, 0));
-        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 18, 2));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 20 * 8, 0));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 15, 2));
         p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20 * 1, 0));
 
-        // 3) Cancel any reload in progress & give one extra shell
         cancelCooldown("Shotgun");
-        ammo = maxAmmo + 1;  // three shells total (maxAmmo stays at 2)
-        e.setItem(0, newItem(
-                Material.PRISMARINE_SHARD,
-                ChatColor.GRAY + "Slugged Shotgun"
-        ));
+        ammo = maxAmmo + 1;
+        e.setItem(0, shotgun);
+        setItemAmount(0,3);
+        finalShotBoosted = true;
+
 
         cancelCooldown("Peppergun");
-            // onComplete!
-            pepperAmmo = maxPepperAmmo;
-            e.setItem(1, newItem(Material.PRISMARINE_CRYSTALS,
-                    ChatColor.YELLOW + "Peppergun"));
+        pepperAmmo = maxPepperAmmo;
+        e.setItem(1, peppergun);
 
-        // 4) Play the drink sound & self-damage
         p.playSound(p.getLocation(),
                 Sound.ENTITY_GENERIC_DRINK,
                 1f, 0.2f);
 
-        // Fixed damage logic - prevent killing player with 0.5 health
         if (p.getHealth() <= 5) {
-            p.setHealth(Math.max(0.5, p.getHealth() - 4)); // Reduce damage if low health
+            p.setHealth(Math.max(0.5, p.getHealth() - 4));
         } else {
             p.damage(5);
         }
 
-        // 5) Start single "Booze" timer
-        setCooldown("Booze", 12, Sound.ENTITY_PLAYER_BURP, () -> {
-            // effect ends → restore the booze bottle
+        setCooldown("Booze", 18, Sound.ENTITY_PLAYER_BURP, () -> {
             e.setItem(2, newItem(
                     Material.HONEY_BOTTLE,
                     ChatColor.GOLD + "Booze"
             ));
-            p.playSound(p.getLocation(),
-                    Sound.ENTITY_PLAYER_BURP,
-                    2f, 1f);
+            finalShotBoosted = false;
         });
     }
 
+    public void setItemAmount(int index, int amount) {
+        if (p.getInventory().getItem(index) != null) {
+            p.getInventory().getItem(index).setAmount(amount);
+        }
+    }
+
     public static Vector randomizeVectorAngle(Vector vec, double maxAngleDeg) {
-        if (vec.length() == 0) return vec.clone(); // avoid division by zero
+        if (vec.length() == 0) return vec.clone();
 
         Random random = new Random();
 
-        // Normalize vector
         Vector direction = vec.clone().normalize();
-        double length = vec.length();
 
-        // Generate a random axis perpendicular to the vector
-        Vector randomVec = new Vector(random.nextDouble(), random.nextDouble(), random.nextDouble()).normalize();
-        Vector axis = direction.clone().crossProduct(randomVec).normalize();
+        direction.rotateAroundY(-maxAngleDeg + ((maxAngleDeg * 2) * random.nextDouble()));
+        direction.rotateAroundZ(-maxAngleDeg + ((maxAngleDeg * 2) * random.nextDouble()));
+        direction.rotateAroundX(-maxAngleDeg + ((maxAngleDeg * 2) * random.nextDouble()));
 
-        if (axis.length() == 0) {
-            // If axis is zero (very rare), pick arbitrary perpendicular
-            axis = direction.getX() != 0 ? new Vector(0, 1, 0) : new Vector(1, 0, 0);
-        }
-
-        // Random angle in radians
-        double maxAngleRad = Math.toRadians(maxAngleDeg);
-        double angle = (random.nextDouble() * 2 - 1) * maxAngleRad;
-
-        // Rotate the direction around the axis
-        Vector rotated = rotateAroundAxis(direction, axis, angle);
-        return rotated.multiply(length);
-    }
-
-    // Rodrigues' rotation formula
-    private static Vector rotateAroundAxis(Vector v, Vector axis, double angle) {
-        double cos = Math.cos(angle);
-        double sin = Math.sin(angle);
-
-        double x = v.getX(), y = v.getY(), z = v.getZ();
-        double u = axis.getX(), vA = axis.getY(), w = axis.getZ();
-
-        return new Vector(
-                (u*(u*x + vA*y + w*z)*(1 - cos) + x*cos + (-w*y + vA*z)*sin),
-                (vA*(u*x + vA*y + w*z)*(1 - cos) + y*cos + (w*x - u*z)*sin),
-                (w*(u*x + vA*y + w*z)*(1 - cos) + z*cos + (-vA*x + u*y)*sin)
-        );
+        return direction;
     }
 }

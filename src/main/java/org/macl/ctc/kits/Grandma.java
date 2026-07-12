@@ -3,6 +3,7 @@ package org.macl.ctc.kits;
 import org.bukkit.*;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -11,11 +12,13 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
@@ -25,6 +28,8 @@ public class Grandma extends Kit {
     ItemStack scooterItem = newItem(Material.MINECART,ChatColor.GRAY + "Scooter",1);
     ItemStack classicCane = newItem(Material.BLAZE_ROD,ChatColor.GOLD + "Classic Cane");
 
+    ItemStack slot3Item;
+
     boolean isClassy = false;
     boolean ridingScooter = false;
     int hitCount = 0;
@@ -32,7 +37,7 @@ public class Grandma extends Kit {
     Minecart scooterEntity;
     int explodeScooter;
     BukkitTask caneTask;
-    BukkitTask scooterTask;
+    scooterProcess scooterProc;
 
     public Grandma(Main main, Player p, KitType type) {
         super(main, p, type);
@@ -43,7 +48,7 @@ public class Grandma extends Kit {
         e.addItem(scooterItem);
 //        p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 99999999, 0));
         e.setLeggings(newItemEnchanted(Material.GOLDEN_LEGGINGS, ChatColor.GOLD + "Golden Pantaloons", Enchantment.SWIFT_SNEAK, 1));
-        e.setChestplate(newItem(Material.LEATHER_CHESTPLATE, "Flower Dress"));
+        e.setChestplate(newItem(Material.LEATHER_CHESTPLATE, "Tattered Dress"));
         giveWool();
         giveWool();
         setCookieRegen(0);
@@ -141,6 +146,7 @@ public class Grandma extends Kit {
 
     public void onCaneHit() {
         hitCount++;
+        giveCane(hitCount);
         if (hitCount >= maxHitCount) {
             new BukkitRunnable() {
                 @Override
@@ -150,8 +156,7 @@ public class Grandma extends Kit {
             }.runTaskLater(main, 1L);
             hitCount = 0;
             isClassy = true;
-        } else {
-            giveCane(hitCount);
+
         }
     }
 
@@ -186,7 +191,9 @@ public class Grandma extends Kit {
         Minecart scooter = p.getWorld().spawn(p.getLocation(),Minecart.class);
         scooter.addPassenger(p);
         scooterProcess sp = new scooterProcess();
+        scooterProc = sp;
         sp.scooter = scooter;
+
         scooterEntity = scooter;
         ridingScooter = true;
         BukkitTask spTask = sp.runTaskTimer(main,0,1L);
@@ -197,8 +204,12 @@ public class Grandma extends Kit {
         PlayerInventory inv = p.getInventory();
         ItemStack blowUp = newItem(Material.FIREWORK_STAR,ChatColor.DARK_RED + "Explode Scooter");
         ItemStack jump = newItem(Material.FEATHER,ChatColor.GREEN + "Scooter Jump");
+        ItemStack honk = newItem(Material.LEATHER_HORSE_ARMOR,ChatColor.RED + "Honk!");
         inv.setItem(0,blowUp);
         inv.setItem(2,jump);
+        slot3Item = inv.getItem(3);
+        inv.setItem(3,honk);
+
     }
 
     public void cleanScooterHotbar() {
@@ -206,19 +217,24 @@ public class Grandma extends Kit {
         if (isClassy) {
             ItemStack cc = classicCane.clone();
             cc.addUnsafeEnchantment(Enchantment.SHARPNESS,5);
-            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,10);
+            cc.addUnsafeEnchantment(Enchantment.KNOCKBACK,8);
             cc.setAmount(maxHitCount + 1);
             inv.setItem(0,cc);
         } else {
             giveCane(hitCount);
         }
         inv.setItem(2,scooterItem);
+        inv.setItem(3,slot3Item);
     }
 
     public class scooterProcess extends BukkitRunnable {
         int time = 0;
         int maxTime = 15 * 20;
+        boolean wantsJump = false;
         Minecart scooter;
+
+        HashMap<Entity,Integer> entitiesWithBrokenAnkles = new HashMap<>();
+        ArrayList<Entity> entitiesWithBrokenAnklesQueue = new ArrayList<>();
 
         public void run() {
             if (!scooter.isValid()) {
@@ -231,9 +247,17 @@ public class Grandma extends Kit {
 
             if (time <= maxTime) {
                 time++;
-                scooter.getWorld().spawnParticle(Particle.LARGE_SMOKE, scooter.getLocation().add(0.0,0.1,0.0), 2,0.1,0.1,0.1);
-//                p.setLevel((int) (maxTime / 20));
+                for (int i = 0; i <= 2; i++) {
+                    double addX = -0.3 + (0.6 * Math.random());
+                    double addY = -0.3 + (0.6 * Math.random());
+                    double addZ= -0.3 + (0.6 * Math.random());
+                    Vector sDir = scooterEntity.getLocation().getDirection().normalize();
+                    sDir.rotateAroundY(1.5708);
+                    Location scoLoc = scooter.getLocation().subtract(sDir.multiply(1));
+                    scooter.getWorld().spawnParticle(Particle.LARGE_SMOKE, scoLoc.add(addX,addY,addZ), 0, 0.0, 0.1, 0.0, 0.3);
+                }
                 handleScooterMovement();
+                handleRunOver();
                 p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 2, 1));
                 scooter.setFallDistance(0f);
             } else {
@@ -241,45 +265,120 @@ public class Grandma extends Kit {
             }
         }
 
+        public void handleRunOver() {
+            if (scooterEntity == null) return;
+
+            for (Entity e : entitiesWithBrokenAnkles.keySet()) {
+                if (entitiesWithBrokenAnkles.get(e) > 0) {
+                    entitiesWithBrokenAnkles.put(e,entitiesWithBrokenAnkles.get(e) - 1);
+                } else {
+                    entitiesWithBrokenAnklesQueue.add(e);
+                }
+            }
+
+            for (Entity e : entitiesWithBrokenAnklesQueue) {
+                entitiesWithBrokenAnkles.remove(e);
+            }
+
+            for (Entity e : p.getWorld().getNearbyEntities(scooterEntity.getLocation(),0.5,0.5,0.5)) {
+                if (e instanceof Player pe) {
+                    if (!main.game.sameTeam(pe.getUniqueId(),p.getUniqueId())) {
+                        runOverEntity(pe);
+                    }
+                } else if (e instanceof LivingEntity le) {
+                    runOverEntity(le);
+                }
+            }
+
+        }
+
+        public void runOverEntity(LivingEntity e) {
+            if (entitiesWithBrokenAnkles.containsKey(e)) return;
+            entitiesWithBrokenAnklesQueue.add(e);
+            e.setVelocity(e.getVelocity().setY(0.7));
+
+            p.getWorld().playSound(e.getLocation(),Sound.ENTITY_IRON_GOLEM_DAMAGE,1.2f,0.4f);
+            p.getWorld().playSound(e.getLocation(),Sound.ENTITY_SKELETON_HURT,0.3f,0.5f);
+
+            if (e instanceof Player pe) {
+                main.combatTracker.setHealth(pe,pe.getHealth() - 3,p,"scooter");
+            } else {
+                e.damage(6);
+            }
+        }
+
+        public void checkStep() {
+            if (scooterEntity == null) return;
+            Location sLoc = scooterEntity.getLocation();
+            Vector sDir = scooterEntity.getLocation().getDirection().normalize();
+            sDir.rotateAroundY(1.5708);
+//            p.spawnParticle(Particle.ELECTRIC_SPARK,sLoc.clone().add(sDir),1,0,0,0,0);
+            RayTraceResult hit = p.getWorld().rayTraceBlocks(sLoc, sDir, 1.0,FluidCollisionMode.NEVER);
+            if (hit == null) return;
+            double maxStepY = 1.1;
+            Location hitPosAdjusted = hit.getHitPosition().toLocation(p.getWorld()).add(sDir.clone().multiply(0.1));
+            Location yCastStart = hitPosAdjusted.add(0,maxStepY,0);;
+//            p.spawnParticle(Particle.FIREWORK,yCastStart,1,0,0,0,0);
+            RayTraceResult hitY = p.getWorld().rayTraceBlocks(yCastStart, new Vector(0,-1,0), maxStepY);
+            if (hitY == null) return;
+            double length = hitY.getHitPosition().distance(yCastStart.toVector());
+            if (Math.abs(length) <= 0.1) return;
+            Location stepLoc = scooterEntity.getLocation();
+            stepLoc.setY(hitY.getHitPosition().getY() + 0.15);
+            scooterEntity.teleport(stepLoc);
+        }
+
         public void blowUp() {
-            main.fakeExplode(p,p.getLocation().add(0.0,1.0,0.0),14,4,true,true,true, "scooter");
+            main.fakeExplode(p,p.getLocation().add(0.0,1.0,0.0),12,3,false,false,true, "scooter",1.0f);
 
             scooter.remove();
             cleanScooterHotbar();
-            setCooldown("Scooter",15,Sound.BLOCK_BREWING_STAND_BREW);
+            setCooldown("Scooter",18,Sound.BLOCK_BREWING_STAND_BREW);
             cancel();
         }
 
         public void despawn() {
+            p.setVelocity(scooter.getVelocity());
             scooter.remove();
             cleanScooterHotbar();
-            setCooldown("Scooter",15,Sound.BLOCK_BREWING_STAND_BREW);
+            setCooldown("Scooter",18,Sound.BLOCK_BREWING_STAND_BREW);
             cancel();
         }
 
         public void handleScooterMovement() {
             Vector velocity = p.getEyeLocation().getDirection().setY(0).normalize().multiply(1.0);
             double fallVel = scooter.getVelocity().getY();
+            if (wantsJump) {
+                fallVel = 0.7;
+                wantsJump = false;
+            }
             scooter.setRotation(p.getEyeLocation().getYaw() + 90,0);
-            scooter.setDerailedVelocityMod(new Vector(1.1,0.0,1.1));
+            scooter.setDerailedVelocityMod(new Vector(1.1,1.0,1.1));
             scooter.setVelocity(velocity.add(new Vector(0,fallVel,0)));
+            checkStep();
         }
     }
 
     public void scooterJump () {
         if (isOnCooldown("SJump")) return;
-        setCooldown("SJump",5,Sound.ENTITY_HORSE_JUMP);
+        setCooldown("SJump",4,Sound.ENTITY_HORSE_JUMP);
         if (scooterEntity != null) {
-            scooterEntity.setVelocity(new Vector(0,1.0,0));
+            scooterEntity.teleport(scooterEntity.getLocation().add(0,2,0));
+            scooterProc.wantsJump = true;
+
         }
     }
 
     public void scooterExplode() {
-        if (scooterEntity != null && !scooterEntity.getPassengers().isEmpty()) {
-            scooterEntity.removePassenger(scooterEntity.getPassengers().get(0));
+        if (scooterProc != null) {
+            scooterProc.despawn();
         }
 
-        main.fakeExplode(p,p.getLocation().add(0.0,1.0,0.0),18,6,false,true,true, "scooter");
-        p.getWorld().createExplosion(p.getLocation(), 3f, false, true);
+        main.fakeExplode(p,p.getLocation().add(0.0,1.0,0.0),10,4,false,false,true, "scooter",0.5f);
+//        p.getWorld().createExplosion(p.getLocation(), 3f, false, true);
+    }
+
+    public void scooterHonk() {
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_VILLAGER_TRADE,2f,2f);
     }
 }

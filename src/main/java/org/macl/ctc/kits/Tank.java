@@ -5,94 +5,142 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
-import org.bukkit.entity.Arrow;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Snowball;
+import org.bukkit.block.EndGateway;
+import org.bukkit.block.data.MultipleFacing;
+import org.bukkit.block.data.type.GlassPane;
+import org.bukkit.block.data.type.Slab;
+import org.bukkit.entity.*;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
+
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.List;
 
 public class Tank extends Kit {
 
     ItemStack shield = (main.game.redHas(p)) ? newItem(Material.RED_STAINED_GLASS_PANE, ChatColor.RED + "Shield") : newItem(Material.BLUE_STAINED_GLASS_PANE, ChatColor.BLUE + "Shield");
+    ItemStack spentShield = newItem(Material.LIGHT_GRAY_STAINED_GLASS_PANE,ChatColor.GRAY + "Shield Recharging...");
     ItemStack glass = (main.game.redHas(p)) ? new ItemStack(Material.RED_STAINED_GLASS_PANE) : new ItemStack(Material.BLUE_STAINED_GLASS_PANE);
-
+    ItemStack hellfire = newItem(Material.FLINT_AND_STEEL, ChatColor.RED + "Hellfire Missile", 1);
     ItemStack gun = newItem(Material.NETHERITE_SHOVEL, ChatColor.GOLD + "Gatling Gun");
+    ItemStack gunOff = newItem(Material.NETHERITE_SHOVEL, ChatColor.DARK_GRAY + "Gatling - Off");
+    ItemStack gunOn = newItem(Material.GOLDEN_SHOVEL,ChatColor.GOLD + "" + ChatColor.BOLD + "FIRING!");
+    ItemStack napalm = newItem(Material.EXPERIENCE_BOTTLE,ChatColor.YELLOW + "Napalm Charge",2);
 
     boolean setup = false;
-    boolean gatling = false;
+
+    boolean gatlingBuffer = false;
+
+    GatlingProcess gatlingProcess;
+
+    ArrayList<Location> locs = new ArrayList<>();
+
+    private Material savedBlockType = null;
 
     public Tank(Main main, Player p, KitType type) {
         super(main, p, type);
         p.getInventory().addItem(gun);
-        p.getInventory().addItem(newItem(Material.COAL, ChatColor.RED + "Hellfire Missle", 1));
-        p.getInventory().addItem(glass);
+        p.getInventory().addItem(hellfire);
+        p.getInventory().addItem(shield);
         e.setChestplate(new ItemStack(Material.IRON_CHESTPLATE));
-        e.setLeggings(newItem(Material.IRON_LEGGINGS, "piss pants"));
+        e.setLeggings(newItem(Material.IRON_LEGGINGS, "piss Pants"));
         e.setBoots(new ItemStack(Material.NETHERITE_BOOTS));
-        giveWool();
-        giveWool();
+        giveWool(24);
         p.removePotionEffect(PotionEffectType.SPEED);
         setHearts(28);
         p.setHealth(28);
     }
-    ArrayList<Location> locs = new ArrayList<>();
 
-    public BlockFace[] axis = { BlockFace.NORTH, BlockFace.EAST, BlockFace.SOUTH, BlockFace.WEST };
-
-
-    public Location getBlockCenter(Location location) {
-        double x = location.getBlockX() + 0.5;
-        double y = location.getBlockY();
-        double z = location.getBlockZ() + 0.5;
-        return new Location(location.getWorld(), x, y, z);
-    }
-
-    public BlockFace yawToFace(float yaw) {
-        return axis[Math.round(yaw / 90f) & 0x3];
-    }
     public void gatlingSetup() {
-        BlockFace face = yawToFace(p.getLocation().getYaw());
+        Location bLoc = p.getLocation().getBlock().getLocation().add(0.5,0.0,0.5);
 
-        Location bLoc = getBlockCenter(p.getLocation());
+        BlockFace face = p.getFacing();
 
         bLoc.setPitch(p.getLocation().getPitch());
         bLoc.setYaw(p.getLocation().getYaw());
 
+        ArrayList<Location> ironLocs = new ArrayList<>();
+        ArrayList<Location> topSlabLocs = new ArrayList<>();
+        ArrayList<Location> bottomSlabLocs = new ArrayList<>();
 
+        savedBlockType = bLoc.clone().subtract(0,1,0).getBlock().getType();
 
         BukkitTask t = new BukkitRunnable() {
-            @Override
             public void run() {
-                main.broadcast(face.toString());
+//                main.broadcast(face.toString());
 
                 if (face == BlockFace.EAST || face == BlockFace.WEST) {
                     // z + -
-                    locs.add(bLoc.clone().add(0, 1, 1));
-                    locs.add(bLoc.clone().add(0, 1, -1));
+                    ironLocs.add(bLoc.clone().add(0, 1, 1));
+                    ironLocs.add(bLoc.clone().add(0, 1, -1));
+                    topSlabLocs.add(bLoc.clone().add(0, 2, -1));
+                    topSlabLocs.add(bLoc.clone().add(0, 2, 1));
                 } else if (face == BlockFace.SOUTH || face == BlockFace.NORTH) {
                     // x + -
-                    locs.add(bLoc.clone().add(1, 1, 0));
-                    locs.add(bLoc.clone().add(-1, 1, 0));
+                    ironLocs.add(bLoc.clone().add(1, 1, 0));
+                    ironLocs.add(bLoc.clone().add(-1, 1, 0));
+                    topSlabLocs.add(bLoc.clone().add(1, 2, 0));
+                    topSlabLocs.add(bLoc.clone().add(-1, 2, 0));
                 }
-                locs.add(bLoc.clone().add(0,-1,0));
+                if (!main.restricted.contains(bLoc.clone().add(0, -1, 0).getBlock().getType())) {
+                    bLoc.clone().add(0, -1, 0).getBlock().setType(Material.LIGHT_GRAY_WOOL);
+                    locs.add(bLoc.clone().add(0, -1, 0));
+                }
 
-                locs.add(bLoc.clone().add(-1, 0, 0));
-                locs.add(bLoc.clone().add(1, 0, 0));
-                locs.add(bLoc.clone().add(0, 0, 1));
-                locs.add(bLoc.clone().add(0, 0, -1));
-                locs.add(bLoc.clone().add(0, 2, 0));
+                ironLocs.add(bLoc.clone().add(-1, 0, 0));
+                ironLocs.add(bLoc.clone().add(1, 0, 0));
+                ironLocs.add(bLoc.clone().add(0, 0, 1));
+                ironLocs.add(bLoc.clone().add(0, 0, -1));
 
-                for (Location loc : locs) {
+                Material m = (main.game.redHas(p)) ? Material.REDSTONE_BLOCK : Material.LAPIS_BLOCK;
+
+                if (!main.restricted.contains(bLoc.clone().add(0, 2, 0).getBlock().getType())) {
+                    bLoc.clone().add(0, 2, 0).getBlock().setType(m);
+                    locs.add(bLoc.clone().add(0, 2, 0));
+                }
+
+                topSlabLocs.add(bLoc.clone().add(1, 0, 1));
+                topSlabLocs.add(bLoc.clone().add(-1, 0, 1));
+                topSlabLocs.add(bLoc.clone().add(1, 0, -1));
+                topSlabLocs.add(bLoc.clone().add(-1, 0, -1));
+                bottomSlabLocs.add(bLoc.clone().add(1, -1, 0));
+                bottomSlabLocs.add(bLoc.clone().add(1, -1, 1));
+                bottomSlabLocs.add(bLoc.clone().add(0, -1, 1));
+                bottomSlabLocs.add(bLoc.clone().add(-1, -1, 0));
+                bottomSlabLocs.add(bLoc.clone().add(-1, -1, -1));
+                bottomSlabLocs.add(bLoc.clone().add(0, -1, -1));
+                bottomSlabLocs.add(bLoc.clone().add(1, -1, -1));
+                bottomSlabLocs.add(bLoc.clone().add(-1, -1, 1));
+
+                for (Location loc : ironLocs) {
+                    if (main.restricted.contains(loc.getBlock().getType())) continue;
                     loc.getBlock().setType(Material.IRON_BLOCK);
+                    locs.add(loc);
+                }
+                for (Location loc : topSlabLocs) {
+                    if (main.restricted.contains(loc.getBlock().getType())) continue;
+                    loc.getBlock().setType(Material.QUARTZ_SLAB);
+                    locs.add(loc);
+                }
+                for (Location loc : bottomSlabLocs) {
+                    if (loc.getBlock().getType() == Material.AIR) {
+                        loc.getBlock().setType(Material.QUARTZ_SLAB);
+                        Slab s = (Slab) loc.getBlock().getBlockData();
+                        s.setType(Slab.Type.TOP);
+                        loc.getBlock().setBlockData(s);
+                        locs.add(loc);
+                    }
                 }
 
                 p.teleport(bLoc);
@@ -100,342 +148,503 @@ public class Tank extends Kit {
         }.runTaskLater(main, 3L);
         registerTask(t);
 
-
-
         p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 999999999, 5));
-        e.clear();
-        e.setItem(0, gun);
-        e.setItem(1, newItem(Material.FLINT, ChatColor.RED + "EXIT"));
-        e.setChestplate(new ItemStack(Material.IRON_CHESTPLATE));
-        e.setLeggings(newItem(Material.IRON_LEGGINGS, "piss pants"));
-        e.setBoots(new ItemStack(Material.NETHERITE_BOOTS));
+        e.setItem(0, gunOff);
+        e.setItem(1,napalm);
+        e.setItem(2,newItem(Material.FLINT,ChatColor.DARK_RED + "EXIT"));
+
+        gatlingProcess = new GatlingProcess();
+        BukkitTask task = gatlingProcess.runTaskTimer(main,0L,1L);
+        registerTask(task);
+
         setup = true;
     }
 
-    BukkitTask task = null;
-
-    int usage = 0;
-
-    public void gatling(BlockFace face) {
-        if(isOnCooldown("gatling") || inHellfire)
+    public void gatling() {
+        if (isOnCooldown("gatling") || inHellfire)
             return;
-        if(!setup) {
-            if(locs != null) {
-                for (Location loc : locs)
-                    loc.getBlock().setType(Material.AIR);
+        if (!setup) {
+            if (locs != null) {
+                for (Location l : locs) {
+                    l.getBlock().setType(Material.AIR);
+                }
                 locs.clear();
             }
             gatlingSetup();
-            // cool down
-            // in gatling setup change inventory
         } else {
-            if(gatling) {
-                // gattling is already on
-                task.cancel();
-                gatling = false;
+            if (gatlingProcess == null) return;
+
+            if (!gatlingProcess.shootingActive && !gatlingBuffer) {
+                e.setItem(0,gunOn);
+                gatlingBuffer = true;
+                gatlingProcess.shootingActive = true;
+            }
+            if (p.hasPotionEffect(PotionEffectType.SLOWNESS)) {
+                p.removePotionEffect(PotionEffectType.SLOWNESS);
+            }
+            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,999999999,11));
+
+        }
+    }
+
+    public void switchGatlingOff() {
+        if (gatlingProcess == null) return;
+
+        if (gatlingProcess.shootingActive && !gatlingBuffer) {
+            e.setItem(0,gunOff);
+            gatlingBuffer = true;
+            gatlingProcess.shootingActive = false;
+            if (p.hasPotionEffect(PotionEffectType.SLOWNESS)) {
+                p.removePotionEffect(PotionEffectType.SLOWNESS);
+            }
+            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,999999999,5));
+        }
+    }
+
+    public class GatlingProcess extends BukkitRunnable {
+
+        boolean shootingActive = false;
+
+        int shots = 0;
+
+        int maxShots = 200;
+
+        int regenTicks = 0;
+
+        ItemStack item;
+
+        public GatlingProcess() {
+
+        }
+
+        public void run() {
+            item = e.getItem(0);
+
+            if (gatlingBuffer) gatlingBuffer = false;
+
+            if (shots >= maxShots) {
+                exit();
+                this.cancel();
                 return;
+            }
+
+            if (shootingActive) {
+                shoot();
             } else {
-                // gattling turn on
-                gatling = true;
+                regenHeat();
+            }
+
+            updateToolDamage();
+
+        }
 
 
+        public void shoot() {
+            Snowball b = p.launchProjectile(Snowball.class);
+            if (shots > (maxShots / 2)) {
+                b.setFireTicks(999);
+                p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1f, 0.1f);
+            }
+            b.setVelocity(new Vector());
 
-                task = new BukkitRunnable() {
-                    int timer = 0;
-                    @Override
-                    public void run() {
-                        usage++;
-                        ItemStack item = e.getItem(0);
-                        int dmg = usage*20;
-                        //error
-                        if(dmg >= item.getType().getMaxDurability()) {
-                            usage = 0;
-                            exit();
-                            this.cancel();
-                            return;
-                        }
+            Vector lookDir = p.getEyeLocation().getDirection();
+            double overheatAngle = (((double) shots / maxShots) * 0.125);
 
-                        if(gatling == false || item == null ) {
-                            this.cancel();
-                            return;
-                        }
+            Vector newDir = Grandpa.randomizeVectorAngle(lookDir,overheatAngle);
 
-                        ItemMeta itemMeta = item.getItemMeta();
-                        Damageable damage = (Damageable) itemMeta;
+            b.setVelocity(newDir.normalize().multiply(1.35 + (float) shots / 175));
+            p.getWorld().playSound(p.getLocation(), Sound.ITEM_FLINTANDSTEEL_USE, 1f, 0.1f + ((float) shots / 200));
+            shots++;
 
+        }
 
-                        if (itemMeta instanceof Damageable){
-                            if(dmg != item.getType().getMaxDurability())
-                                damage.setDamage(dmg);
-                        }
-
-
-                        item.setItemMeta(itemMeta);
-
-                        Snowball b = p.launchProjectile(Snowball.class);
-                        b.setVelocity(b.getVelocity().multiply(1.35));
-                        // if over heat cancel
-                        p.getWorld().playSound(p.getLocation(), Sound.ITEM_FLINTANDSTEEL_USE, 1f,0.1f);
-                        timer++;
-                    }
-                }.runTaskTimer(main, 0L, 1L);
-                registerTask(task);
+        public void regenHeat() {
+            if (regenTicks <= 1) {
+                regenTicks++;
+            } else {
+                shots = Math.max(shots - 1,0);
             }
         }
 
-    }
+        public void updateToolDamage() {
+            int maxDura = item.getType().getMaxDurability();
+            double heatRatio = ((double) shots / maxShots);
+            int damage = (int) (maxDura * (heatRatio));
 
-    public boolean shieldOn = false;
+            setItemDamage(item,damage);
+        }
+
+        static public void setItemDamage(ItemStack item,int dmg) {
+            ItemMeta itemMeta = item.getItemMeta();
+            Damageable damage = (Damageable) itemMeta;
+
+            if (itemMeta != null) {
+                if (dmg != item.getType().getMaxDurability()) {
+//                    main.broadcast("" + dmg);
+                    damage.setDamage(dmg);
+                }
+            }
+
+            item.setItemMeta(itemMeta);
+        }
+
+
+
+    }
 
 
     public void shield(Block placedBlock, BlockFace playerFacing) {
-        if(shieldOn == true || gatling || inHellfire) return;
-        shieldOn = true;
+        if(inHellfire) return;
+        if (isOnCooldown("Shield")) return;
+        setCooldown("Shield", 32, Sound.BLOCK_CHAIN_PLACE, () -> {
+            if (gatlingProcess == null) {
+                e.setItem(2, shield);
+            }
+        });
 
+        e.setItem(2,spentShield);
 
-
-        // cool down
         ArrayList<Block> blocks = new ArrayList<>();
 
+        placedBlock.setType(glass.getType(),true);
+        blocks.add(placedBlock);
 
+        double wallX = 1.5;
+        double wallZ = 1.5;
+        double wallY = 3;
 
         if(playerFacing == BlockFace.NORTH || playerFacing == BlockFace.SOUTH) {
             // Place east to west (+x -x)
+            wallX = 4 + 0.5;
             for(int x = -3; x < 4; x++) {
                 for(int y = 0; y < 3; y++) {
                     Block b = placedBlock.getWorld().getBlockAt(placedBlock.getX() + x, placedBlock.getY() + y, placedBlock.getZ());
-                    if(b.getType() == Material.AIR)
-                        b.setType(glass.getType());
-                    blocks.add(b);
+                    if(b.getType() == Material.AIR) {
+                        b.setType(glass.getType(), true);
+                        blocks.add(b);
+                    }
                 }
             }
         } else if(playerFacing == BlockFace.EAST || playerFacing == BlockFace.WEST) {
+            wallZ = 4 + 0.5;
             for(int z = -3; z < 4; z++) {
                 for(int y = 0; y < 3; y++) {
                     Block b = placedBlock.getWorld().getBlockAt(placedBlock.getX(), placedBlock.getY() + y, placedBlock.getZ() + z);
-                    if(b.getType() == Material.AIR)
-                        b.setType(glass.getType());
-                    blocks.add(b);
+                    if(b.getType() == Material.AIR) {
+                        b.setType(glass.getType(), true);
+                        blocks.add(b);
+                    }
                 }
             }
         }
 
-        p.getWorld().playSound(placedBlock.getLocation(), Sound.ENTITY_IRON_GOLEM_REPAIR, 1f, 1f);
+        new ShieldProcess(
+                main,
+                p,
+                blocks,
+                placedBlock.getLocation().add(0, 1.5, 0),
+                glass.getType(),
+                wallX, wallY, wallZ
+        ).runTaskTimer(main,0,1L); //if too resource intensive increase the period (and divide maxTicks by period)
 
-        // kinda icky but it works. 10 second shield 20 second give back
+        p.getWorld().playSound(placedBlock.getLocation(), Sound.ENTITY_IRON_GOLEM_REPAIR, 1f, 0.5f);
 
-        BukkitTask t1 = new BukkitRunnable() {
-            @Override
-            public void run() {
-                for(Block b : blocks)
+    }
+
+    private static class ShieldProcess extends BukkitRunnable {
+
+        int ticks = 0;
+        int maxTicks = (20*16);
+
+        Player p;
+
+        Main m;
+
+        Material glassMat;
+
+        ArrayList<Block> glassBlocks;
+        ArrayList<Block> ignoreBlocks = new ArrayList<>();
+
+        Location wallLoc;
+
+        double wallX;
+        double wallY;
+        double wallZ;
+
+        public ShieldProcess(Main m,Player p,ArrayList<Block> blocks,Location wallLoc,Material glass,double x,double y, double z) {
+            this.m = m;
+            this.p = p;
+            this.glassBlocks = blocks;
+            this.wallLoc = wallLoc;
+            this.glassMat = glass;
+            this.wallX = x;
+            this.wallY = y;
+            this.wallZ = z;
+        }
+
+        public void run() {
+            if (ticks < maxTicks) {
+                ticks++;
+                handleWallLogic();
+            } else {
+                endWall();
+            }
+        }
+
+        public void handleWallLogic() {
+
+            handleIgnoreBlocks();
+
+            for (Block b : glassBlocks) {
+                if (ignoreBlocks.contains(b)) {
                     b.setType(Material.AIR);
-                p.playSound(p.getLocation(), Sound.BLOCK_METAL_PLACE, 1f, 1f);
+                    continue;
+                }
+                b.setType(glassMat);
+                MultipleFacing m = (MultipleFacing) b.getBlockData();
+                for (BlockFace bf : (m.getAllowedFaces())) {
+                    boolean touch = b.getRelative(bf).getType().isSolid();
+                    m.setFace(bf,touch);
+                    b.setBlockData(m);
+                }
             }
-        }.runTaskLater(main, 20*10);
-        registerTask(t1);
+        }
 
-        BukkitTask t2 = new BukkitRunnable() {
-            @Override
-            public void run() {
-                e.setItem(2, shield);
-                shieldOn = false;
+        public void handleIgnoreBlocks() {
+            ignoreBlocks.clear();
+
+            for (Entity e : wallLoc.getWorld().getNearbyEntities(wallLoc,wallX,wallY,wallZ)) {
+                if (e instanceof Player pe) {
+                    if (m.game.sameTeam(pe.getUniqueId(),p.getUniqueId())) {
+                        addIgnoreBlock(pe.getLocation().add(0,0.5,0));
+                        addIgnoreBlock(pe.getLocation().add(0,1.5,0));
+                    }
+                }
             }
-        }.runTaskLater(main, 20*20);
-        registerTask(t2);
+            for (Entity e : wallLoc.getWorld().getNearbyEntities(wallLoc,wallX + 1,wallY,wallZ + 1)) {
+                if (e instanceof Projectile pj && pj.getShooter() instanceof Player pe) {
+                    if (m.game.sameTeam(pe.getUniqueId(),p.getUniqueId())) {
+                        addIgnoreBlock(pj.getLocation());
+                    }
+                }
+            }
+
+
+        }
+
+
+        public void addIgnoreBlock(Location from) {
+            Block closestBlock = null;
+            for (Block b : glassBlocks) {
+                if (closestBlock == null) {
+                    closestBlock = b;
+                    continue;
+                }
+
+                double toClosestLength = (closestBlock.getLocation().add(0.5,0.5,0.5).toVector().subtract(from.toVector()).lengthSquared());
+                double fromLength = (b.getLocation().add(0.5,0.5,0.5).toVector().subtract(from.toVector()).lengthSquared());
+
+                if (toClosestLength > fromLength) {
+                    closestBlock = b;
+                }
+
+            }
+            if (!ignoreBlocks.contains(closestBlock)) {
+                ignoreBlocks.add(closestBlock);
+            }
+        }
+
+
+
+        public void endWall() {
+            for(Block b : glassBlocks)
+                b.setType(Material.AIR);
+            p.playSound(p.getLocation(), Sound.BLOCK_METAL_PLACE, 1f, 1f);
+            this.cancel();
+        }
 
     }
 
-
-    // Hellfire state
-    private boolean hellfirePending = false;
-    private boolean inHellfire = false;
-
-    // Where to return after hellfire
-    private Location hellfireReturnLoc = null;
-
-    // Track tasks so we can cancel + cleanup safely
-    private BukkitTask hellfireEffectTask = null;
-    private BukkitTask hellfireTeleportTask = null;
-    private BukkitTask hellfireFallTask = null;
-
-    private Material savedBlockType = null;
-
-    @Override
-    public void cancelAllTasks() {
-        super.cancelAllTasks();
-        endHellfire(true, "cancelAllTasks()");
-    }
+    boolean inHellfire = false;
 
     public void hellfire() {
-        if (inHellfire || hellfirePending || isOnCooldown("hellfire")) return;
-
-        if (p == null || !p.isOnline() || p.isDead()) return;
-
-        // snapshot return location ONCE (important)
-        hellfireReturnLoc = p.getLocation().clone();
-
-        hellfirePending = true;
-        setCooldown("hellfire", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+        if (inHellfire || isOnCooldown("hellfire"))
+            return;
+        Location previousLoc = p.getLocation();
         p.getWorld().playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, 5f, 1f);
+        inHellfire = true;
 
-        // visual pre-charge (local counter so it can't bleed)
-        hellfireEffectTask = new BukkitRunnable() {
-            int ticks = 0;
-            @Override public void run() {
-                if (!p.isOnline() || p.isDead()) {
-                    endHellfire(false, "player offline/dead during charge");
-                    return;
-                }
-                if (++ticks >= 15) {
-                    this.cancel();
-                    hellfireEffectTask = null;
-                    return;
-                }
-                p.getWorld().spawnParticle(Particle.DRIPPING_LAVA, p.getLocation(), 20);
+        int blockRange = 120;
+        int solidBlocksPassed = 0;
+        int maxSolidBlocks = 20;
+        int yTeleport = 0;
+
+        for (int i = 0; i < blockRange; i++) {
+            Location targetLoc = previousLoc.clone().add(0,i,0);
+            if (targetLoc.getY() >= p.getWorld().getMaxHeight()) {
+                yTeleport = i;
+                break;
             }
-        }.runTaskTimer(main, 0L, 1L);
-        registerTask(hellfireEffectTask);
 
-        // compute target location
-        World w = p.getWorld();
-        double targetY = Math.min(hellfireReturnLoc.getY() + 120, w.getMaxHeight() - 2);
-        Location target = hellfireReturnLoc.clone();
-        target.setY(targetY);
+            if (targetLoc.getBlock().getType().isSolid()) {
+                solidBlocksPassed++;
+            } else if (solidBlocksPassed < maxSolidBlocks){
+                yTeleport = i;
+                solidBlocksPassed = 0;
+            } else {
+                break;
+            }
+        }
 
-        // schedule teleport
-        hellfireTeleportTask = new BukkitRunnable() {
-            @Override public void run() {
-                hellfireTeleportTask = null;
+        Location ps = previousLoc.clone();
+        ps.setY(ps.getY() + yTeleport);
+        ps.setPitch(90);
+//        ps.getChunk().load();   // make sure the chunk exists
 
-                if (!p.isOnline() || p.isDead()) {
-                    endHellfire(false, "player offline/dead before teleport");
-                    return;
-                }
-
-                // make sure chunk is loaded
-                target.getChunk().load();
-
-                boolean ok = p.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN);
-                main.getLogger().info("[Hellfire] teleported=" + ok + " targetY=" + target.getY());
-
-                if (!ok) {
-                    endHellfire(false, "teleport failed/cancelled");
-                    return;
-                }
-
-                // now we are truly in hellfire
-                hellfirePending = false;
-                inHellfire = true;
-
+        BukkitTask hellfireTeleportTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                boolean ok = p.teleport(ps, PlayerTeleportEvent.TeleportCause.PLUGIN);
+                main.getLogger().info("[Hellfire] teleported=" + ok + "  targetY=" + ps.getY());
                 p.setInvulnerable(true);
-                p.setRotation(0, 90);
 
-                // fall task (local timer so it can't bleed)
-                hellfireFallTask = new BukkitRunnable() {
-                    int t = 0;
+                e.setItem(1,napalm);
+//                e.getItem(1).setAmount(1);
 
-                    @Override public void run() {
-                        if (!p.isOnline() || p.isDead()) {
-                            endHellfire(false, "player offline/dead mid-flight");
-                            return;
-                        }
-
-                        // explode if close to any other player
-                        for (Entity ent : p.getWorld().getNearbyEntities(p.getLocation(), 2, 2, 2)) {
-                            if (ent instanceof Player other && !other.equals(p) && other.getGameMode() != GameMode.SPECTATOR) {
-                                main.fakeExplode(p, p.getLocation(), 15, 10, false, false, true, "hellfire");
-                                p.getWorld().createExplosion(p.getLocation(), 2f, false, true);
-                                endHellfire(true, "proximity explode");
-                                return;
-                            }
-                        }
-
-                        t++;
-
-                        // stop conditions: timeout OR landed for a bit
-                        if (t > 20 * 25 || (p.getFallDistance() == 0 && t > 80)) {
-                            main.fakeExplode(p, p.getLocation(), 15, 10, false, false, true, "hellfire");
-                            p.getWorld().createExplosion(p.getLocation(), 2f, false, true);
-                            endHellfire(true, "timed/landed explode");
-                            return;
-                        }
-
-                        // flight visuals
-                        p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10);
-                        p.setVelocity(p.getLocation().getDirection().multiply(1.9));
-                        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_SHOOT, 5f, 0.5f);
-                    }
-                }.runTaskTimer(main, 0L, 1L);
-
+                BukkitTask hellfireFallTask = new hellfireProcess(previousLoc).runTaskTimer(main,0L,1L);
                 registerTask(hellfireFallTask);
             }
         }.runTaskLater(main, 8L);
         registerTask(hellfireTeleportTask);
     }
-    private void endHellfire(boolean teleportBack, String reason) {
-        // cancel tasks (safe even if already cancelled)
-        if (hellfireEffectTask != null) { hellfireEffectTask.cancel(); hellfireEffectTask = null; }
-        if (hellfireTeleportTask != null) { hellfireTeleportTask.cancel(); hellfireTeleportTask = null; }
-        if (hellfireFallTask != null) { hellfireFallTask.cancel(); hellfireFallTask = null; }
 
-        hellfirePending = false;
-        inHellfire = false;
+    public class hellfireProcess extends BukkitRunnable{
+        int ticks = 0;
+        int ascendTicksLeft = 40;
+        Location prevLoc;
 
-        if (p != null && p.isOnline()) {
-            p.setInvulnerable(false);
-            p.setFallDistance(0f);
-
-            if (teleportBack && hellfireReturnLoc != null) {
-                p.teleport(hellfireReturnLoc, PlayerTeleportEvent.TeleportCause.PLUGIN);
-            }
+        public hellfireProcess(Location prevLoc) {
+            this.prevLoc = prevLoc;
         }
 
-        hellfireReturnLoc = null;
+        public void run() {
+            for (Entity ent : p.getWorld().getNearbyEntities(p.getLocation(), 2, 2, 2)) {
+                if (ent instanceof Player pe
+                        && !ent.equals(p)
+                        && !main.game.sameTeam(p.getUniqueId(),pe.getUniqueId())) {
+                    explode();
+                    return;
+                }
+            }
+            p.setGliding(true);
 
-        main.getLogger().info("[Hellfire] end reason=" + reason);
-    }
+            if (getRealVelocity().getY() > 0) ascendTicksLeft--;
+
+            if (ticks > 20 * 14 || (isOnGround()) || (ascendTicksLeft <= 0 && ticks > 30)) {
+                explode();
+            } else {
+
+                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10,0,0,0,0.3,null,true);
+                p.getWorld().spawnParticle(Particle.LARGE_SMOKE, p.getLocation(), 3,0.2,0.2,0.2,0.05,null,true);
+//                p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 1,0.2,0.2,0.2,0.05);
+                p.setVelocity(p.getLocation().getDirection().multiply(1.75));
+                p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_SHOOT, 5f, 0.5f);
+            }
+            ticks++;
+        }
+
+        public void explode() {
+            Location explodeLoc = p.getLocation();
+            p.setInvulnerable(false);
+            p.teleport(prevLoc);
+            p.setFallDistance(0f);
+            p.setInvulnerable(false);
+            p.setGliding(false);
+            p.setFireTicks(0);
+            e.setItem(1,hellfire);
+            main.fakeExplode(p, explodeLoc, 12, 10, true, true, true, "hellfire");
+            inHellfire = false;
+            setCooldown("hellfire", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+            this.cancel();
+        }
+    };
 
     public void exit() {
-        setCooldown("gatling", 20, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+        setCooldown("gatling", 24, Sound.BLOCK_DISPENSER_DISPENSE);
 
         BukkitTask t = new BukkitRunnable() {
             @Override
             public void run() {
 
-                /* 1️⃣  restore movement & sounds (unchanged) */
+                if (gatlingProcess != null) gatlingProcess.cancel();
+
+                gatlingProcess = null;
+
                 p.removePotionEffect(PotionEffectType.SLOWNESS);
                 p.playSound(p.getLocation(), Sound.ENTITY_IRON_GOLEM_DEATH, 1f, 1f);
 
-                /* 2️⃣  clear the iron blocks (unchanged) */
-                e.clear();
                 for (Location loc : locs) loc.getBlock().setType(Material.AIR);
-
-                /* 3️⃣  put back the original block if it’s not restricted */
+                locs.clear();
                 Block below = p.getLocation().clone().add(0, -1, 0).getBlock();
-                if (savedBlockType != null                     // we have a saved value
-                        && !main.restricted.contains(savedBlockType)   // that value is allowed
-                        && !main.restricted.contains(below.getType())) { // and restoring is allowed
+                if (savedBlockType != null
+                        && !main.restricted.contains(below.getType())) {
                     below.setType(savedBlockType);
                 }
-                savedBlockType = null;   // reset for next run
+                savedBlockType = null;
 
-                /* 4️⃣  rest of the inventory / armour reset */
-                p.getInventory().addItem(gun);
-                p.getInventory().addItem(newItem(Material.COAL,
-                        ChatColor.RED + "Hellfire Missle", 1));
-                if (!shieldOn) p.getInventory().addItem(glass);
-
-                e.setItem(3, new ItemStack(wool, 64));
-                e.setItem(4, new ItemStack(wool, 64));
-                e.setChestplate(new ItemStack(Material.IRON_CHESTPLATE));
-                e.setLeggings(newItem(Material.IRON_LEGGINGS, "piss pants"));
-                e.setBoots(new ItemStack(Material.NETHERITE_BOOTS));
+                e.setItem(0,gun);
+                e.setItem(1,hellfire);
+                if (isOnCooldown("Shield")) {
+                    e.setItem(2,spentShield);
+                } else e.setItem(2,shield);
 
                 setup  = false;
-                gatling = false;
-                usage  = 0;
             }
         }.runTaskLater(main, 2L);
         registerTask(t);
     }
+
+    public void bottleHit(ProjectileHitEvent event) {
+        Location hitLoc = event.getEntity().getLocation().getBlock().getLocation().add(0.5,0.5,0.5);
+        ArrayList<Block> fireBlocks = new ArrayList<Block>();
+        for (Location l : Archer.sphere(hitLoc,5,false)) {
+            if (Math.random() > 0.25) continue;
+            Block b = l.getBlock();
+            if (b.getType().isAir()) continue;
+
+            Block upBlock = b.getRelative(BlockFace.UP);
+
+            if (upBlock.getType().isAir()) {
+                upBlock.setType(Material.FIRE);
+                fireBlocks.add(upBlock);
+            }
+        }
+
+        p.getWorld().spawnParticle(Particle.FLAME,hitLoc,30,2,2,2,0.4,null,true);
+        p.getWorld().spawnParticle(Particle.LARGE_SMOKE,hitLoc,10,2,2,2,0.2,null,true);
+        p.getWorld().spawnParticle(Particle.LAVA,hitLoc,20,2,2,2,0.3,null,true);
+
+        p.getWorld().playSound(hitLoc,Sound.ENTITY_BLAZE_HURT,3.0f,1.2f);
+        p.getWorld().playSound(hitLoc,Sound.ENTITY_BLAZE_SHOOT,3.0f,0.8f);
+
+        for (Entity e : p.getWorld().getNearbyEntities(hitLoc,4,4,4)) {
+            e.setFireTicks(80);
+            if (e instanceof Player pe) {
+                main.combatTracker.setHealth(pe,pe.getHealth() - 3,p,"napalm");
+            }
+        }
+
+        new BukkitRunnable() {
+            public void run() {
+                for (Block b : fireBlocks) {
+                    if (b.getType() == Material.FIRE) {
+                        b.setType(Material.AIR);
+                    }
+                }
+                p.getWorld().playSound(hitLoc,Sound.BLOCK_FIRE_EXTINGUISH,3.0f,1.2f);
+            }
+        }.runTaskLater(main,90L);
+
+    }
+
 }

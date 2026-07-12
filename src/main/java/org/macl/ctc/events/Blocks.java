@@ -6,10 +6,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.boss.BossBar;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.Arrow;
-import org.bukkit.entity.Egg;
-import org.bukkit.entity.Firework;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -17,12 +14,11 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
-import org.macl.ctc.kits.Engineer;
-import org.macl.ctc.kits.Spy;
-import org.macl.ctc.kits.Tank;
+import org.macl.ctc.kits.*;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -120,24 +116,55 @@ public class Blocks extends DefaultListener {
         Block b = event.getBlock();
         Player p = event.getPlayer();
         game.resetCenter(p);
-        if (b.getType() == Material.RED_CANDLE)
-            if (main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Spy) {
-                Spy s = (Spy) main.getKits().get(p.getUniqueId());
-                if (s.getDetonate() != null)
-                    return;
-                s.setDetonate(b.getLocation());
-                s.addDetonate();
-                p.sendMessage(ChatColor.GREEN + "Remote explosive activated! Right click blaze rod to activate");
+        Kit k = main.getKits().get(p.getUniqueId());
+
+        if (k != null) {
+
+            if (Tag.WOOL.isTagged(b.getType())) {
+//                main.broadcast("is wool");
+                ItemStack i = event.getItemInHand();
+                if (!k.getPlayer().getInventory().containsAtLeast(i,2)) {
+//                    main.broadcast("does not contain wool");
+                    k.onWoolOut();
+                }
             }
 
-        if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Tank && (b.getType() == Material.BLUE_STAINED_GLASS_PANE || b.getType() == Material.RED_STAINED_GLASS_PANE)) {
-            Tank t = (Tank) main.getKits().get(p.getUniqueId());
-            t.shield(event.getBlock(), p.getFacing());
-        }
-        if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Engineer) {
-            Engineer e = (Engineer) main.getKits().get(p.getUniqueId());
-            if(event.getBlock().getType() == Material.DISPENSER) {
-                e.turret(b.getLocation());
+            if (k instanceof Spy s) {
+                if (b.getType() == Material.RED_CANDLE) {
+                    if (s.getDetonate() != null)
+                        return;
+                    s.setDetonate(b.getLocation());
+                    s.addDetonate();
+                    p.sendMessage(ChatColor.GREEN + "Remote explosive deployed! Right click blaze rod to activate");
+                }
+            }
+            if (k instanceof Builder bu) {
+                if (b.getType() == Material.CAMPFIRE || b.getType() == Material.SOUL_CAMPFIRE) {
+                    bu.createMedFire(event);
+                }
+            }
+            if (k instanceof Tank t) {
+                if (b.getType() == Material.BLUE_STAINED_GLASS_PANE || b.getType() == Material.RED_STAINED_GLASS_PANE) {
+                    t.shield(event.getBlock(), p.getFacing());
+                }
+                if (b.getType() == Material.LIGHT_GRAY_STAINED_GLASS_PANE) {
+                    event.setCancelled(true);
+                }
+            }
+            if (k instanceof Engineer e) {
+                if(event.getBlock().getType() == Material.DISPENSER) {
+                    e.turret(b.getLocation());
+                    event.setCancelled(true);
+                }
+                if(event.getBlock().getType() == Material.BEACON) {
+                    e.placeTeleport(b.getLocation().add(0.5,0.5,0.5),event);
+                }
+                if (
+                        event.getBlock().getType() == Material.RED_SHULKER_BOX ||
+                        event.getBlock().getType() == Material.BLUE_SHULKER_BOX) {
+                    e.placeDetector(b.getLocation().add(0.5,0.5,0.5));
+
+                }
             }
         }
 
@@ -180,14 +207,31 @@ public class Blocks extends DefaultListener {
         Block b = event.getHitBlock();
         if(b == null || b.getType() == Material.RED_STAINED_GLASS_PANE || b.getType() == Material.BLUE_STAINED_GLASS_PANE)
             return;
+
         if(event.getEntity().getShooter() instanceof Player && event.getEntity() instanceof Egg) {
             Player p = (Player) event.getEntity().getShooter();
             if(b != null) {
                 main.fakeExplode(p, b.getLocation(), 8, 6, false, true,true, "grenade");
+                double yAdd = p.isSneaking() ? 0.75 : 1.0;
+                Vector fromEggToPlayer = (p.getLocation().add(0,yAdd,0).toVector().subtract(event.getEntity().getLocation().toVector()));
+//                main.broadcast("" + fromEggToPlayer.length());
+                if (fromEggToPlayer.length() < 3.5) {
+
+                    double force = p.isSneaking() ? 1.8 : 1.65;
+                    p.setVelocity(fromEggToPlayer.normalize().multiply(force));
+                    if (p.getHealth() > 0) {
+                        p.setHealth(p.getHealth() + (2.5 - fromEggToPlayer.length()));
+                    }
+                }
             }
 
         }
         if(event.getEntity().getShooter() instanceof Player && event.getEntity() instanceof Arrow) {
+            Player p = (Player) event.getEntity().getShooter();
+            if(event.getEntity() != null)
+                event.getEntity().remove();
+        }
+        if(event.getEntity().getShooter() instanceof Player && event.getEntity() instanceof SpectralArrow) {
             Player p = (Player) event.getEntity().getShooter();
             if(event.getEntity() != null)
                 event.getEntity().remove();

@@ -13,5 +13,9 @@ public enum KitType {
     GRANDPA,
     ARCHER,
     ARTIFICER,
-    LUMBERJACK
+    LUMBERJACK,
+    MINER,
+    OPERATOR,
+    TIMEKEEPER,
+    HARVESTER,
 }

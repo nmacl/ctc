@@ -77,10 +77,31 @@ public class Interact extends DefaultListener {
         }
     }
 
-
+    @EventHandler
     private void leftClick(PlayerInteractEvent event) {
+        Action a = event.getAction();
+        if (a != Action.LEFT_CLICK_AIR && a != Action.LEFT_CLICK_BLOCK) return;
 
+        Player p = event.getPlayer();
+        ItemStack itm = (event.getHand() == EquipmentSlot.HAND)
+                ? p.getInventory().getItemInMainHand()
+                : p.getInventory().getItemInOffHand();
+
+        // No item? nothing to do
+        if (itm == null || itm.getType() == Material.AIR) return;
+
+        Material m = itm.getType();
+        if (kit.kits.get(p.getUniqueId()) != null) {
+            Kit k = kit.kits.get(p.getUniqueId());
+            if (k instanceof Engineer) {
+                Engineer e = (Engineer) k;
+                if (m == Material.CROSSBOW) {
+                    e.reloadFireworks();
+                    }
+            }
+        }
     }
+
 
     boolean second = false;
 
@@ -100,8 +121,7 @@ public class Interact extends DefaultListener {
         Material m = itm.getType();
         if (kit.kits.get(p.getUniqueId()) != null) {
             Kit k = kit.kits.get(p.getUniqueId());
-            if(k instanceof Grandpa) {
-                Grandpa ga = (Grandpa) k;
+            if(k instanceof Grandpa ga) {
                 if(m == Material.PRISMARINE_SHARD)
                     ga.shootGun();
                 else if(m == Material.HONEY_BOTTLE)
@@ -109,15 +129,20 @@ public class Interact extends DefaultListener {
                 else if(m == Material.PRISMARINE_CRYSTALS)
                     ga.shootPepper();
             }
-            if (k instanceof Snowballer) {
-                Snowballer snowball = (Snowballer) k;
+            if (k instanceof Snowballer snowball) {
                 if (m == Material.GOLDEN_HOE)
                     snowball.launch();
                 else if (m == Material.WOODEN_SWORD)
                     snowball.shootSnowball();
+                else if (m == Material.POWDER_SNOW_BUCKET) {
+                    snowball.slam();
+                    event.setCancelled(true);
+                }
+                else if (m == Material.BUCKET) {
+                    event.setCancelled(true);
+                }
             }
-            if(k instanceof Grandma) {
-                Grandma g = (Grandma) k;
+            if(k instanceof Grandma g) {
                 if(m == Material.COOKIE)
                     g.heart();
                 if(m == Material.MINECART)
@@ -126,14 +151,21 @@ public class Interact extends DefaultListener {
                     g.scooterExplode();
                 if(m == Material.FEATHER)
                     g.scooterJump();
+                if (m == Material.LEATHER_HORSE_ARMOR)
+                    g.scooterHonk();
             }
-            if(k instanceof Spy) {
-                Spy s = (Spy) k;
-                if(m == Material.BLAZE_ROD)
+            if(k instanceof Spy s) {
+                if(m == Material.BLAZE_ROD) {
                     s.detonate();
+                } else if (m == Material.IRON_HOE) {
+                    s.swapToShank();
+                    event.setCancelled(true);
+                } else if (s.isHoldingShank()) {
+                    s.swapToDagger();
+                    event.setCancelled(true);
+                }
             }
-            if(k instanceof Demolitionist) {
-                Demolitionist d = (Demolitionist) k;
+            if(k instanceof Demolitionist d) {
                 if(m == Material.CARROT_ON_A_STICK)
                     d.launchSheep();
                 if(m == Material.EGG) {
@@ -143,48 +175,72 @@ public class Interact extends DefaultListener {
                         kit.kits.get(p.getUniqueId()).setCooldown("egg", 2, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
                     }
                 }
+                if (m == Material.STONE_PRESSURE_PLATE) {
+                    if (!p.isSneaking()) {
+                        d.throwMine();
+                        event.setCancelled(true);
+                    }
+                }
             }
-            if(k instanceof Builder) {
-                Builder b = (Builder) k;
+            if(k instanceof Builder b) {
                 if(m == Material.DIAMOND_SHOVEL)
                     b.openMenu();
+                if (m == Material.SHEARS)
+                    b.useShear();
             }
-            if(k instanceof Runner) {
-                Runner r = (Runner) k;
+            if(k instanceof Runner r) {
                 if(m == Material.STONE_SWORD)
                     r.blockRun();
                 if(m == Material.CLOCK)
                     r.polarField();
-                if(m == Material.SLIME_BALL)
+                if(m == Material.IRON_INGOT)
                     r.platform();
+                if (m == Material.FEATHER)
+                    r.dash();
             }
-            if(k instanceof Tank) {
-                Tank t = (Tank) k;
-                if(m == Material.NETHERITE_SHOVEL)
-                    t.gatling(event.getBlockFace());
+            if(k instanceof Tank t) {
+                if(m == Material.NETHERITE_SHOVEL) {
+                    t.gatling();
+                    event.setCancelled(true);
+                }
+                if(m == Material.GOLDEN_SHOVEL) {
+                    t.switchGatlingOff();
+                    event.setCancelled(true);
+                }
                 if(m == Material.FLINT)
                     t.exit();
-                if(m == Material.COAL) {
+                if(m == Material.FLINT_AND_STEEL) {
                     t.hellfire();
                     event.setCancelled(true);
                 }
             }
-            if(k instanceof Fisherman) {
-                Fisherman f = (Fisherman) k;
+            if(k instanceof Fisherman f) {
                 if(m == Material.PUFFERFISH)
                     f.pufferfishBomb();
                 if(m == Material.COD)
                     f.codSniper();
+                if (m == Material.SALMON)
+                    f.salmonrang();
+                if (m == Material.BONE_MEAL)
+                    f.swap();
             }
 
-            if(k instanceof Engineer) {
-                Engineer e = (Engineer) k;
-                if(m == Material.IRON_SHOVEL)
-                    e.overload();
+            if(k instanceof Engineer e) {
+                if(m == Material.SMOOTH_STONE) {
+                    e.destroyTurret();
+                    event.setCancelled(true);
+                }
+                if (m == Material.COBBLESTONE || m == Material.STONE) {
+                    event.setCancelled(true);
+                }
+
+                if (m == Material.IRON_INGOT) {
+                    e.replaceTeleporters();
+                }
+
             }
 
-            if(k instanceof Artificer) {
-                Artificer art = (Artificer) k;
+            if(k instanceof Artificer art) {
                 if (m == Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE) {
                     art.useFlamethrower();
                     event.setCancelled(true);
@@ -218,15 +274,37 @@ public class Interact extends DefaultListener {
                     event.setCancelled(true);
                 }
             }
+
+            if (k instanceof Operator o) {
+                if (m == Material.NETHERITE_HOE) {
+                    o.useBovineStrike();
+                    event.setCancelled(true);
+                }
+                if (o.holdingPowerTerracotta()) {
+                    o.useBovineStrike();
+                    event.setCancelled(true);
+                }
+                if (m == Material.HOPPER) {
+                    o.sendDislocatorBeam();
+                    event.setCancelled(true);
+                }
+                if (m == Material.ECHO_SHARD) {
+                    o.sendSpreaderCapsule();
+                    event.setCancelled(true);
+                }
+            }
         }
     }
 
     @EventHandler
     public void itemSwitch(PlayerItemHeldEvent event) {
         Player p = event.getPlayer();
-        if(kit.kits.get(p.getUniqueId()) != null && kit.kits.get(p.getUniqueId()) instanceof Archer) {
-            Archer a = (Archer) kit.kits.get(p.getUniqueId());
+        Kit k = kit.kits.get(p.getUniqueId());
+        if(k instanceof Archer a) {
             a.handleItemSwitch(event);
+        }
+        if (k instanceof Operator o) {
+            o.hotbarSwitch(event);
         }
     }
 

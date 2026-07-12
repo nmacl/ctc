@@ -1,9 +1,6 @@
 package org.macl.ctc.game;
 
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
-import org.bukkit.Sound;
+import org.bukkit.*;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -14,6 +11,7 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -45,7 +43,12 @@ public class KitManager implements Listener {
     }
 
     public KitMenu getMenu() {
-        KitMenu menu = new KitMenu(main.prefix + "Kit Menu", 18);
+        KitMenu menu = new KitMenu(main.prefix + "Kit Menu", 18+9+9);
+
+        for (int i = 0; i < 9; i++) {
+            menu.setItem(getSlot(),ChatColor.GRAY + "",Material.GRAY_STAINED_GLASS_PANE);
+        }
+
         List<String> gLore = createLore(ChatColor.DARK_PURPLE + "Cane: Knockback 10",
                 ChatColor.LIGHT_PURPLE + "Cookies: Right click player to heal",
                 ChatColor.RED + "No speed");
@@ -65,8 +68,9 @@ public class KitManager implements Listener {
 
         menu.setItem(getSlot(), ChatColor.DARK_RED + "DEMOLITIONIST", Enchantment.BLAST_PROTECTION, demoLore, Material.TNT);
 
-        List<String> buildLore = createLore(ChatColor.DARK_BLUE + "Hammer: Right click build menu",
-                ChatColor.DARK_GRAY + "Shears",
+        List<String> buildLore = createLore(ChatColor.DARK_GREEN + "Hammer: Right click - Build Menu",
+                ChatColor.DARK_GRAY + "Shears: Right click - Wool Shear",
+                ChatColor.RED + "Medfire: deployable health pack",
                 ChatColor.GREEN + "Extra Wool!");
 
         menu.setItem(getSlot(), ChatColor.DARK_AQUA + "BUILDER", Enchantment.EFFICIENCY, buildLore, Material.GRASS_BLOCK);
@@ -78,30 +82,33 @@ public class KitManager implements Listener {
         menu.setItem(getSlot(), ChatColor.WHITE + "SPY", Enchantment.INFINITY, spyLore, Material.IRON_HOE);
 
         List<String> runnerLore = createLore(ChatColor.BLUE + "Runner",
-                ChatColor.GOLD + "Block Run",
-                ChatColor.WHITE + "Polar Deflection Field");
+                ChatColor.YELLOW + "Block Run",
+                ChatColor.WHITE + "Polar Deflection Field",
+                ChatColor.GOLD + "Dash");
 
-        menu.setItem(getSlot(), ChatColor.BLUE + "Runner", Enchantment.FROST_WALKER, runnerLore, Material.LEATHER_BOOTS);
+        menu.setItem(getSlot(), ChatColor.BLUE + "RUNNER", Enchantment.FROST_WALKER, runnerLore, Material.LEATHER_BOOTS);
 
-        List<String> tankLore = createLore(ChatColor.DARK_GREEN + "Gatling Mode",
-                ChatColor.RED + "Hellfire Missle",
-                ChatColor.DARK_AQUA + "Shield");
+        List<String> tankLore = createLore(ChatColor.DARK_GREEN + "Gatling Gun",
+                ChatColor.RED + "Hellfire Missile",
+                ChatColor.DARK_AQUA + "Shield, blocks enemies",
+                ChatColor.DARK_RED +  "Reduced Wool!");
 
-        menu.setItem(getSlot(), ChatColor.GRAY + "Tank", Enchantment.PROTECTION, tankLore, Material.IRON_BLOCK);
+        menu.setItem(getSlot(), ChatColor.GRAY + "TANK", Enchantment.PROTECTION, tankLore, Material.IRON_BLOCK);
 
         List<String> fishLore = createLore(ChatColor.GOLD + "Fishing rod",
                 ChatColor.YELLOW + "Pufferfish Bomb",
                 ChatColor.LIGHT_PURPLE + "Cod Sniper");
 
-        menu.setItem(getSlot(), ChatColor.DARK_AQUA + "Fisherman", Enchantment.LUCK_OF_THE_SEA, fishLore, Material.FISHING_ROD);
+        menu.setItem(getSlot(), ChatColor.DARK_AQUA + "FISHERMAN", Enchantment.LUCK_OF_THE_SEA, fishLore, Material.FISHING_ROD);
 
         List<String> engineerLore = Arrays.asList(
-                ChatColor.GRAY + "Engineer's Wrench",
-                ChatColor.WHITE + "Sentry Gun",
+                ChatColor.YELLOW + "Firework Blaster",
+                ChatColor.WHITE + "Turret",
+                ChatColor.RED + "Enemy Detector",
                 ChatColor.BLUE + "Teleporters"
         );
 
-//        menu.setItem(getSlot(), ChatColor.DARK_GRAY + "Engineer", Enchantment.EFFICIENCY, engineerLore, Material.DISPENSER);
+        menu.setItem(getSlot(), ChatColor.DARK_GRAY + "ENGINEER", Enchantment.EFFICIENCY, engineerLore, Material.DISPENSER);
 
         List<String> grandpaLore = Arrays.asList(
                 ChatColor.GOLD + "Booze",
@@ -110,14 +117,14 @@ public class KitManager implements Listener {
                 ChatColor.DARK_GREEN + "Veteran of many battles"
         );
 
-        menu.setItem(getSlot(), ChatColor.LIGHT_PURPLE + "Grandpa", Enchantment.SHARPNESS, grandpaLore, Material.HONEY_BOTTLE);
+        menu.setItem(getSlot(), ChatColor.LIGHT_PURPLE + "GRANDPA", Enchantment.SHARPNESS, grandpaLore, Material.HONEY_BOTTLE);
 
         List<String> archerLore = createLore(
                 ChatColor.RED       + "Flame Arrow: Unlimited fire arrows",
                 ChatColor.YELLOW    + "Lightning Arrow: Strike lightning on hit",
                 ChatColor.GREEN     + "Teleport Arrow: Swap positions with target",
-                ChatColor.DARK_AQUA + "Ice Arrow: Freeze area in a radius",
-                ChatColor.WHITE     + "Cyclone Arrow: Suck nearby players in",
+                ChatColor.DARK_AQUA + "Ice Arrow: Cover an area in an ice dome",
+                ChatColor.WHITE     + "Cyclone Arrow: Whirls players around",
                 ChatColor.GRAY      + "Gravity Arrow: Lift blocks & players"
         );
 
@@ -138,6 +145,22 @@ public class KitManager implements Listener {
                 ChatColor.DARK_PURPLE + "Have allies Right-Click you to be ridden!"
         );
         menu.setItem(getSlot(), ChatColor.GOLD + "LUMBERJACK", Enchantment.EFFICIENCY, lumberjackLore, Material.GOLDEN_AXE);
+
+        List<String> operatorLore = Arrays.asList(
+                ChatColor.RED + "L0-27 Bovine Strike",
+                ChatColor.DARK_AQUA + "Spreaders",
+                ChatColor.WHITE + "Puller",
+                ChatColor.AQUA + "Dislocator"
+        );
+
+        menu.setItem(getSlot(), ChatColor.BLUE + "OPERATOR", Enchantment.KNOCKBACK, operatorLore, Material.ECHO_SHARD);
+
+        for (int i = 18+9; i < 26+9; i++) {
+            menu.setItem(i,ChatColor.GRAY + "",Material.GRAY_STAINED_GLASS_PANE);
+        }
+
+        menu.setItem(26+9,ChatColor.AQUA + "Info Menu",Material.BOOK);
+
 
         slot = 0;
 
@@ -234,6 +257,9 @@ public class KitManager implements Listener {
                 case GOLDEN_AXE:
                     kits.put(p.getUniqueId(), new Lumberjack(main,p,KitType.LUMBERJACK));
                     break;
+                case ECHO_SHARD:
+                    kits.put(p.getUniqueId(),new Operator(main,p,KitType.OPERATOR));
+                    break;
                 default:
                     break;
             }
@@ -249,10 +275,13 @@ public class KitManager implements Listener {
                         b.bridge();
                         break;
                     case OAK_STAIRS:
-                        b.stairs();
+                        b.stairs(event.isRightClick());
                         break;
                     case LADDER:
                         b.tower();
+                        break;
+                    case SLIME_BLOCK:
+                        b.platform();
                         break;
                     default:
                         event.setCancelled(true);
@@ -263,47 +292,6 @@ public class KitManager implements Listener {
                 p.closeInventory();
             }
         }
-        /*if(getMain().getGames().getState() == GameState.STARTED)
-            event.setCancelled(true);
-        if(click == null)
-            return;
-        if(view.getTitle().equalsIgnoreCase(getMain().getPrefix() + "Kit Menu")) {
-            if(kitHas(p)) {
-                p.closeInventory();
-                event.setCancelled(true);
-                return;
-            }
-            switch(click.getType()) {
-                case SNOWBALL:
-                    Snowballer b = new Snowballer(getMain(), p);
-                    snowballers.add(b);
-                    Bukkit.broadcastMessage("snowball");
-                    break;
-                case STICK:
-                    Grandma g = new Grandma(getMain(), p);
-                    grandmas.add(g);
-                    Bukkit.broadcastMessage("grandma");
-                    break;
-                case TNT:
-                    Demolitionist demo = new Demolitionist(getMain(), p);
-                    demos.add(demo);
-                    break;
-                case GRASS_BLOCK:
-                    Builder build = new Builder(getMain(), p);
-                    builders.add(build);
-                    break;
-                case IRON_HOE:
-                    Spy spy = new Spy(getMain(), p);
-                    spies.add(spy);
-                    break;
-                default:
-                    event.setCancelled(true);
-                    p.closeInventory();
-                    break;
-            }
-            p.closeInventory();
-            event.setCancelled(true);
-        }*/
     }
 
     public void remove(Player p) {
@@ -324,10 +312,21 @@ public class KitManager implements Listener {
             ItemMeta stmeta = st.getItemMeta();
             stmeta.setLore(lore);
             stmeta.setDisplayName(name);
+            stmeta.setEnchantmentGlintOverride(true);
+            stmeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             st.setItemMeta(stmeta);
-            st.addUnsafeEnchantment(enchantment, 1);
+//            st.addUnsafeEnchantment(enchantment, 1);
             e.setItem(slot, st);
         }
+
+        public void setItem(int slot, String name, Material m) {
+            ItemStack st = new ItemStack(m);
+            ItemMeta stmeta = st.getItemMeta();
+            stmeta.setDisplayName(name);
+            st.setItemMeta(stmeta);
+            e.setItem(slot, st);
+        }
+
 
         public Inventory getKitMenu() {
             return e;

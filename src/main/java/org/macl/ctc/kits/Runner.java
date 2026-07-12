@@ -1,12 +1,9 @@
 package org.macl.ctc.kits;
 
-import net.minecraft.world.entity.animal.Cod;
 import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
@@ -16,23 +13,28 @@ import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class Runner extends Kit {
     Material wool = (main.game.redHas(p)) ? Material.RED_WOOL : Material.BLUE_WOOL;
-    ItemStack sword = newItem(Material.STONE_SWORD, ChatColor.GOLD + "Block Run");
-    ItemStack clock = newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field");
+    ItemStack sword = newItem(Material.STONE_SWORD, ChatColor.YELLOW + "Block Run");
+    ItemStack field = newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field");
+    ItemStack dash = newItem(Material.FEATHER,ChatColor.GOLD + "Dash",2);
+
+    Dash dashProcess;
+
+    public boolean damaged = false;
 
     public Runner(Main main, Player p, KitType type) {
         super(main, p, type);
         e.setItem(0, sword);
-        p.getInventory().setItem(1, newItem(Material.CLOCK, ChatColor.WHITE + "Polar Deflection Field",2));
-        p.getInventory().setItem(2, newItem(Material.SLIME_BALL, ChatColor.DARK_GREEN + "Platform"));
+        p.getInventory().setItem(1,field);
+        p.getInventory().setItem(2,dash);
+//        p.getInventory().setItem(3, newItem(Material.IRON_INGOT, ChatColor.GRAY + "Platform"));
         e.setLeggings(new ItemStack(Material.IRON_LEGGINGS, 1));
         e.setBoots(new ItemStack(Material.LEATHER_BOOTS, 1));
         p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 999999999, 0));
-        regenItem("Deflection Field", clock, 14, 2, 1);
+        regenItem("Dash", dash, 8, 2, 2);
         giveWool();
         giveWool();
         setHearts(16);
@@ -41,29 +43,32 @@ public class Runner extends Kit {
     ArrayList<Block> blocks = new ArrayList<Block>();
     public void blockRun() {
         if (!isOnCooldown("Block Run")) {
-            setCooldown("Block Run", 15, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
-            
+            setCooldown("Block Run", 18, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+
             // grab the BukkitTask and register it
             BukkitTask runTask = new BukkitRunnable() {
                 int timer = 0;
                 int exp = 50;
+                final int rad = 1;
 
                 @Override
                 public void run() {
                     timer++;
                     // if the player no longer has a kit, stop
-                    if (main.kit.kits.get(p.getUniqueId()) == null) {
-                        for (Block b : blocks) b.setType(Material.AIR);
+                    if (main.getKits().get(p.getUniqueId()) == null) {
+                        startCleanup();
                         this.cancel();
                         return;
                     }
-                    if (timer < 6 * 20) {
+                    if (timer < 5 * 20) {
                         exp++;
-                        playExp(exp * 0.01f);
-                        for (int i = -1; i <= 3; i++) {
+                        p.playSound(p,Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.2f,exp * 0.01f);
+                        Vector v = getRealVelocity();
+                        Vector hv = new Vector(v.getX(),0.01,v.getZ()).normalize();
+                        for (int i = -rad; i <= rad; i++) {
                             for (int j = -1; j <= 1; j++) {
-                                for (int z = -1; z <= 3; z++) {
-                                    Block b = p.getLocation().add(i, -1, z).getBlock();
+                                for (int z = -rad; z <= rad; z++) {
+                                    Block b = p.getLocation().add(i + hv.getX(), -1, z + hv.getZ()).getBlock();
                                     if (b.getType() == Material.AIR) {
                                         b.setType(wool);
                                         blocks.add(b);
@@ -73,12 +78,54 @@ public class Runner extends Kit {
                         }
                     } else {
                         // clean up
-                        for (Block b : blocks) b.setType(Material.AIR);
+                        startCleanup();
                         this.cancel();
                     }
                 }
+
+                public void startCleanup() {
+                    ArrayList<Block> cleanBlocks = (ArrayList<Block>) blocks.clone();
+                    ArrayList<Block> queuedBlocks = new ArrayList<Block>();
+
+                    World w = p.getWorld();
+
+                    blocks.clear();
+
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+
+                            if (cleanBlocks.isEmpty()) {
+                                this.cancel();
+                                return;
+                            }
+
+                            for (int i = 0; i <= 5; i++) {
+                                int index = (cleanBlocks.size() - 1) - i;
+                                if (index < 0) break;
+                                Block qB = cleanBlocks.get(index);
+                                if (qB != null) {
+                                    queuedBlocks.add(qB);
+                                }
+                            }
+
+                            Location l = queuedBlocks.get((0)).getLocation();
+                            w.playSound(l,Sound.ENTITY_ITEM_PICKUP,2.5f,0.5f);
+
+                            for (Block b : queuedBlocks) {
+                                if (b.getType() == wool) b.setType(Material.AIR);
+                                cleanBlocks.remove(b);
+                            }
+
+                            queuedBlocks.clear();
+
+                        }
+                    }.runTaskTimer(main,0L,1L);
+                }
+
             }.runTaskTimer(main, 0L, 1L);
 
+//            registerTask(runTask);
         }
     }
 
@@ -86,69 +133,87 @@ public class Runner extends Kit {
     ArrayList<Entity> es = new ArrayList<>();
 
     public void polarField() {
-        if(isOnCooldown("Polar"))
+        if(isOnCooldown("Deflection Field"))
             return;
-        setCooldown("Polar", 4, Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
+        setCooldown("Deflection Field", 19, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, () ->
+                p.getInventory().setItem(1,field));
 
-        int clocks = p.getInventory().first(Material.CLOCK);
-        p.getInventory().getItem(clocks).setAmount(p.getInventory().getItem(clocks).getAmount() - 1);
-        
+        p.getInventory().setItem(1,newItem(Material.FIRE_CHARGE,ChatColor.RED + "Device Overheated!"));
+
+        damaged = true;
+
+        p.getWorld().playSound(p.getLocation(),Sound.BLOCK_TRIAL_SPAWNER_SPAWN_MOB,1.5f,1.2f);
+        p.getWorld().playSound(p.getLocation(),Sound.BLOCK_BEACON_POWER_SELECT,1.5f,1.4f);
+
         // Register the task properly
         BukkitTask fieldTask = new BukkitRunnable() {
-            @Override
+//            @Override
+
+            double rad = 0.0;
+
             public void run() {
                 ArrayList<Projectile> proj = new ArrayList<Projectile>();
 
-                if(ticks > 2*20 || p.isDead()) {
+                if(ticks > 8*20 || p.isDead()) {
                     ticks = 0;
                     this.cancel();
                     es.clear();
                     return;
                 }
-                for(Entity e : p.getNearbyEntities(2.5, 2.5, 2.5)) {
+
+                if (ticks < 150) {
+                    if (rad < 2.5) {
+                        rad += 0.25;
+                    } else rad = 2.5;
+
+                } else {
+                    if (rad > 0) {
+                        rad -= 0.25;
+                    } else rad = 0;
+                }
+
+                for(Entity e : p.getNearbyEntities(rad, rad, rad)) {
                     if(es.contains(e)) continue;
 
                     if(e instanceof Projectile) {
                         es.add(e);
                         Projectile projectile = (Projectile) e;
-
-                        if(projectile instanceof FishHook || projectile instanceof FishingHook) {
-                            // Spawn new hook heading back at shooter
-                            if(projectile.getShooter() instanceof LivingEntity) {
-                                LivingEntity shooter = (LivingEntity) projectile.getShooter();
-                                Vector toShooter = shooter.getEyeLocation().toVector()
-                                        .subtract(projectile.getLocation().toVector())
-                                        .normalize()
-                                        .multiply(projectile.getVelocity().length() * 1.5f);
-
-                                FishHook newHook = (FishHook) projectile.getWorld().spawn(
-                                        projectile.getLocation(),
-                                        FishHook.class
-                                );
-                                newHook.setShooter(shooter);
-                                newHook.setVelocity(toShooter);
-                                projectile.remove();
-                            }
-                        } else {
-                            // Perfect bounce back with 1.5x speed
+                        if(!(projectile instanceof FishHook || projectile instanceof FishingHook)) {
+//                            projectile.setBounce(true);
                             projectile.setShooter(null);
-                            if(!proj.contains(projectile)) {
-                                Vector v = projectile.getVelocity();
-                                v.multiply(-1.2f); // Perfect inversion, 50% faster
-                                projectile.setVelocity(v);
-                            }
                         }
-                    } else {
-                        // Handle all other entities (players, mobs, etc.)
+                        if(!proj.contains(projectile)) {
+                            Vector v = e.getVelocity();
+                            v.multiply(-1f);
+                            v.setY(Math.abs(v.getY()));
+                            projectile.setVelocity(v);
+                        }
+                    }
+                }
 
+                if (damaged) {
+                    damaged = false;
+                    // Handle all other entities (players, mobs, etc.)
+
+                    p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,0.8f,0.85f);
+                    p.getWorld().playSound(p.getLocation(),Sound.BLOCK_GLASS_BREAK,1.2f,1.5f);
+
+                    p.getWorld().spawnParticle(Particle.GUST,p.getLocation().add(0,1,0),3,null);
+                    p.getWorld().spawnParticle(Particle.FLASH,p.getLocation().add(0,1,0),1,Color.WHITE);
+
+                    for(Entity e : p.getNearbyEntities(2.5, 2.5, 2.5)) {
+                        if(es.contains(e)) continue;
                         // Calculate radial direction from player to target
                         Vector direction = e.getLocation().toVector().subtract(p.getLocation().toVector()).normalize();
 
-                        // Apply radial knockback with lift (both affected by time decay)
-                        Vector knockback = direction.multiply(0.6f);
-                        knockback.setY(0.3f); // Add upward lift that also decays
-                        if(!(ticks > 4*20))
-                            e.setVelocity(knockback);
+                        // Apply radial knockback with lift
+                        Vector knockback = direction.multiply(0.8f);
+                        knockback.setY(0.3f); // Add upward lift
+
+                        e.setVelocity(knockback.multiply(1.4));
+                        if (e instanceof LivingEntity le) {
+                            le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,30,2));
+                        }
 
                         // Spawn particle trail on the knocked back entity
                         new BukkitRunnable() {
@@ -166,10 +231,48 @@ public class Runner extends Kit {
                     }
                 }
 
+
+                double rotX = (double) ticks / 25;
+                double rotY = (double) ticks / 25;
+                double rotZ = (double) ticks / 25;
+
                 Location loc = p.getLocation();
-                p.getWorld().spawnParticle(Particle.CLOUD, loc, 5);
+                createRingParticles(30,rad,loc,rotX,rotY,rotZ* 0);
+                createRingParticles(30,rad,loc,(rotY * 1.5) + 15,(rotZ * 1.5 * 0) -15 ,(rotX * 1.5) + 7);
+                createRingParticles(30,rad,loc,(rotZ / 1.5) - 25 ,(rotX / 1.5) - 20,(rotY / 1.5 * 0) - 10);
                 ticks++;
+
+
+
             }
+
+            public void createRingParticles(int particles, double rad, Location loc,double rotX, double rotY, double rotZ) {
+                for (int i = 0; i < particles; i++) {
+                    //createRingParticles has been used so many times it should probably be turned into a main function
+                    //instead of being created individually on a kit. I'm not going to do that right now. Lol!
+                    double theta = Math.random() * 2 * Math.PI;
+                    double x = rad * Math.cos(theta);
+                    double z = rad * Math.sin(theta);
+//                    double y = rad * Math.tan(theta);
+
+                    Vector particleRotation = new Vector(x,0,z);
+                    particleRotation.rotateAroundX(rotX);
+                    particleRotation.rotateAroundZ(rotZ);
+                    particleRotation.rotateAroundY(rotY);
+
+                    Location particleLocation = loc.clone().add(particleRotation).add(0,0.5,0);
+
+                    Vector speed = getRealVelocity();
+//                    Vector posOffset = p.getVelocity().normalize().multiply(1.75);
+//                    posOffset.setY(0);
+//                    particleLocation.add(posOffset);
+
+
+                    Objects.requireNonNull(loc.getWorld()).spawnParticle(
+                            Particle.ELECTRIC_SPARK, particleLocation, 0,speed.getX(),speed.getY(),speed.getZ(),1.5);
+                }
+            }
+
         }.runTaskTimer(main, 0L, 1L);
 
         // Register the task
@@ -214,6 +317,89 @@ public class Runner extends Kit {
                     } else {
                         b.setType(Material.BLACK_CONCRETE, false);
                     }
+                }
+            }
+        }
+    }
+
+    public void dash() {
+        int dash = p.getInventory().first(Material.FEATHER);
+        p.getInventory().getItem(dash).setAmount(p.getInventory().getItem(dash).getAmount() - 1);
+
+        p.setFallDistance(0);
+
+        p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 15, 0));
+
+        double boost = 1.1;
+
+        if (isOnGround()) {
+            boost = 1.75;
+        }
+
+        if (dashProcess != null) {
+            dashProcess.cancel();
+        }
+
+        Vector dir = p.getEyeLocation().getDirection().setY(0.01).normalize().multiply(boost);
+        dir.setY(0.2);
+        p.setVelocity(dir);
+
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_HORSE_BREATHE,1.8f,0.5f);
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_HORSE_BREATHE,1.8f,1.25f);
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_SHOOT,1.8f,0.65f);
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,1.8f,0.65f);
+
+        p.getWorld().spawnParticle(Particle.GUST,p.getLocation().add(0,1,0),3,null);
+
+        p.setFreezeTicks(40);
+
+        Dash d = new Dash();
+        dashProcess = d;
+        runTaskTimer(d,0L,1L);
+
+    }
+
+    public class Dash extends BukkitRunnable {
+        int ticks = 0;
+
+        final Set<UUID> dashThrough = new HashSet<>();
+
+        public void run() {
+            ticks++;
+
+            if (ticks < 15) {
+                p.getWorld().spawnParticle(Particle.CLOUD,p.getLocation().add(0,1.0,0),3,0.2,0.6,0.22,0.0);
+            } else{
+                this.cancel();
+            }
+
+            for (Entity e : p.getNearbyEntities(1.5, 0.5, 1.5)) {
+                if (e instanceof Player target
+                        && !target.getUniqueId().equals(p.getUniqueId())
+                        && dashThrough.add(target.getUniqueId())) {
+
+                    p.getWorld().playSound(target.getLocation(),Sound.ENTITY_BREEZE_SHOOT,1.0f,0.85f);
+                    p.getWorld().playSound(target.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,1.0f,0.85f);
+
+                    p.getWorld().spawnParticle(Particle.GUST,target.getLocation().add(0,0,0),1,null);
+
+                    target.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING,15,0));
+
+                    target.setVelocity(new Vector(0,0.9,0));
+
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            ticks++;
+
+                            if (ticks < 15) {
+                                target.getWorld().spawnParticle(Particle.CLOUD,target.getLocation(),2,0.4,0.4,0.4,0.0);
+                            } else {
+                                this.cancel();
+                            }
+                        }
+                    }.runTaskTimer(main,0L,1L);
+
                 }
             }
         }

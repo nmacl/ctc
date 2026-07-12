@@ -1,6 +1,7 @@
 package org.macl.ctc.events;
 
 import com.destroystokyo.paper.event.entity.ThrownEggHatchEvent;
+import net.minecraft.world.entity.animal.SnowGolem;
 import net.minecraft.world.item.alchemy.Potion;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
@@ -24,6 +25,7 @@ import org.macl.ctc.Main;
 import org.macl.ctc.kits.*;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -108,14 +110,26 @@ public class Players extends DefaultListener {
     @EventHandler
     public void launch(ProjectileLaunchEvent event) {
         Projectile proj = event.getEntity();
-        if(proj instanceof EnderPearl && proj.getShooter() instanceof Player) {
-            EnderPearl e = (EnderPearl) proj;
-            e.setPassenger((Player)proj.getShooter());
+
+        if(proj instanceof EnderPearl e && proj.getShooter() instanceof Player p) {
+            e.addPassenger(p);
         }
-        if(proj instanceof Arrow && proj.getShooter() instanceof Player) {
-            Player p = (Player) proj.getShooter();
-            if(kit.kits.get(p.getUniqueId()) instanceof Archer) {
-                Archer a = (Archer) kit.kits.get(p.getUniqueId());
+
+        if(proj instanceof ThrownExpBottle && proj.getShooter() instanceof Player) {
+            Vector eyeDir = ((Player) proj.getShooter()).getEyeLocation().getDirection();
+            proj.setVelocity(eyeDir.multiply(2.75));
+        }
+
+        if (proj instanceof Snowball s && proj.getShooter() instanceof Player p) {
+            if(kit.kits.get(p.getUniqueId()) instanceof Operator o) {
+                Vector eyeDir = ((Player) proj.getShooter()).getEyeLocation().getDirection();
+                proj.setVelocity(eyeDir.multiply(1.25));
+                o.throwPuller(s);
+            }
+        }
+
+        if(proj instanceof Arrow && proj.getShooter() instanceof Player p) {
+            if(kit.kits.get(p.getUniqueId()) instanceof Archer a) {
                 a.shoot(event);
             }
         }
@@ -128,74 +142,43 @@ public class Players extends DefaultListener {
     }
 
     @EventHandler
+    public void dismount(EntityDismountEvent event) {
+        if (event.getDismounted() instanceof EnderPearl) {
+            if (event.getEntity() instanceof Player p) {
+                if (kit.kits.get(p.getUniqueId()) != null) {
+                    Kit k = kit.kits.get(p.getUniqueId());
+
+                    if (k instanceof Spy s) {
+                        s.onPearlDismount();
+                    }
+                }
+            }
+        }
+    }
+
+    @EventHandler
     public void onFish(PlayerFishEvent event) {
         Player p = event.getPlayer();
         Kit kit = main.getKits().get(p.getUniqueId());
 
-        // Only works for Fisherman kit
-        if (!(kit instanceof Fisherman)) {
-            event.setCancelled(true);
-            return;
-        }
-
-        // Handle player hooking
-        if (event.getCaught() instanceof Player) {
+        if (kit instanceof Fisherman) {
             event.getHook().setVelocity(event.getHook().getVelocity().multiply(1.7));
 
-            Player caught = (Player) event.getCaught();
-            Vector velo = p.getLocation().getDirection().multiply(-3f);
-            double y = p.getLocation().distance(caught.getLocation());
-            y *= 0.14;
-            velo.setY(Math.min(y, 1.8));
-            velo.setX(velo.getX() * 0.3);
-            velo.setZ(velo.getZ() * 0.3);
+            if (event.getCaught() != null) {
+                Entity c = event.getCaught();
 
-            caught.setVelocity(velo);
-            return;
-        }
+                if (event.getCaught() instanceof LivingEntity e) {
+                    e.addPotionEffect(new PotionEffect(PotionEffectType.UNLUCK, 30, 1, true, true));
+                    e.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 30, 1, false, false));
+                }
 
-        // Only trigger grappling hook when bobber lands on a block
-        if (event.getState() != PlayerFishEvent.State.IN_GROUND) return;
-
-        FishHook hook = event.getHook();
-
-        // Must be a solid block
-        if (!hook.getLocation().getBlock().getType().isSolid()) return;
-
-        // === GRAPPLING HOOK MECHANIC ===
-        Location playerLoc = p.getLocation();
-        Location hookLoc = hook.getLocation();
-
-        // Calculate pull direction from player to hook
-        Vector pull = hookLoc.toVector().subtract(playerLoc.toVector());
-        double distance = pull.length();
-        pull.normalize();
-
-        // Calculate strength (scales with distance, capped at 2.2)
-        double strength = Math.min(distance * 0.35, 2.2);
-        double verticalBoost = 0.4;
-
-        // Apply grappling velocity
-        Vector velocity = pull.multiply(strength);
-        velocity.setY(Math.min(0.8, velocity.getY() + verticalBoost));
-        p.setVelocity(velocity);
-
-        // Sound effect
-        p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1f, 1.2f);
-
-        // Cancel vanilla fishing behavior
-        event.setCancelled(true);
-    }
-
-    @EventHandler
-    public void entityDamage(EntityDamageEvent event) {
-        if(event.getEntity() instanceof Player) {
-            Player p = (Player) event.getEntity();
-            if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
-                event.setDamage(p.getHealth());
-            }
-            if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Spy) {
-                ((Spy) main.getKits().get(p.getUniqueId())).uninvis();
+                Vector velo = p.getLocation().getDirection().multiply(-3f);
+                double y = p.getLocation().distance(c.getLocation());
+                y *= 0.14;
+                velo.setY(Math.min(y, 1.8));
+                velo.setX(velo.getX() * 0.3);
+                velo.setZ(velo.getZ() * 0.3);
+                c.setVelocity(velo);
             }
         }
     }
@@ -209,14 +192,58 @@ public class Players extends DefaultListener {
                 a.bHit(event);
             }
         }
+        if (event.getEntity() instanceof Egg e && event.getHitEntity() instanceof FallingBlock) {
+            if (e.getShooter() instanceof Player p) {
+                if (kit.kits.get(p.getUniqueId()) != null) {
+                    Kit k = kit.kits.get(p.getUniqueId());
+                    if (k instanceof Demolitionist d) {
+                        if (d.currentThrownMine != null) { // holy mother of nest
+                            if (d.currentThrownMine.fallMine == event.getHitEntity()) d.currentThrownMine.nuclearBomb();
+                        }
+                    }
+                }
+            }
+        }
+
+        if(event.getEntity() instanceof ThrownExpBottle && event.getEntity().getShooter() instanceof Player p) {
+            if(kit.kits.get(p.getUniqueId()) instanceof Tank t) {
+                t.bottleHit(event);
+                event.setCancelled(true);
+            }
+        }
+
+        if (event.getEntity() instanceof Fireball f  && !(event.getEntity() instanceof SmallFireball)) {
+            if (event.getEntity().getShooter() instanceof Player p && main.kit.kits.get(p.getUniqueId()) instanceof Grandpa g) {
+                if (g.finalShotCanExplode) {
+                    g.finalShotCanExplode = false;
+                    main.fakeExplode(
+                            (Player) f.getShooter(),
+                            f.getLocation(),
+                            6,
+                            3,
+                            true,
+                            true,
+                            true,
+                            "Fireball",
+                            0.2f);
+                }
+            }
+        }
+
     }
 
 
 
+    @EventHandler
     public void onEggThrow(PlayerEggThrowEvent e) {
         e.setHatching(false);
     }
 
+    @EventHandler
+    public void onExpLand(ExpBottleEvent event) {
+        event.setExperience(0);
+        event.setShowEffect(false);
+    }
 
     @EventHandler
     public void itemBreak(PlayerItemBreakEvent event) {
@@ -240,6 +267,16 @@ public class Players extends DefaultListener {
     private Player resolveAttacker(Entity damager) {
         if (damager instanceof Player p) return p;
 
+        if (damager instanceof Firework f) {
+            if (f.getShooter() == null && !(Objects.equals(f.getCustomName(), ""))){
+                return Bukkit.getPlayer(UUID.fromString(f.getName()));
+            } else {
+                return (Player) f.getShooter();
+            }
+
+        }
+
+
         if (damager instanceof Projectile proj && proj.getShooter() instanceof Player shooter) {
             return shooter;
         }
@@ -250,10 +287,19 @@ public class Players extends DefaultListener {
     private String resolveAbility(EntityDamageByEntityEvent event, Player attacker) {
         Entity damager = event.getDamager();
 
+        Kit k = kit.kits.get(event.getEntity().getUniqueId());
+
         // Projectiles
         if (damager instanceof SpectralArrow) return "Spectral Arrow";
         if (damager instanceof Arrow)         return "Bow";
-        if (damager instanceof Snowball)      return "Snowball";
+        if (damager instanceof Snowball s) {
+            if (Objects.equals(s.getCustomName(), "Turret")) return "Turret";
+
+            if (k instanceof Snowballer) return "Snowball";
+            if (k instanceof Tank) return "Snowball";
+
+            return "Snowball";
+        }
 
         // Melee – based on held item
         if (damager instanceof Player) {
@@ -269,8 +315,6 @@ public class Players extends DefaultListener {
         return "";
     }
 
-
-
     @EventHandler
     public void onEntityHit(EntityDamageByEntityEvent event) {
         if(event.getDamager() instanceof SpectralArrow) {
@@ -284,6 +328,7 @@ public class Players extends DefaultListener {
                     Kit shooterkit = kit.kits.get(shooter.getUniqueId());
                     if (shooterkit instanceof Artificer) ((Artificer) shooterkit).addVoidFragments(4);
                     main.broadcast(shot.getName());
+                    shot.setFreezeTicks(100);
                     shot.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 12));
                     shot.sendTitle(
                             ChatColor.AQUA + "***** YOU'VE BEEN FROZEN! *****",
@@ -292,6 +337,12 @@ public class Players extends DefaultListener {
                     );
                 }
             }
+        }
+
+        if (event.getDamager() instanceof Firework f) {
+//            main.broadcast("" + event.getEntity());
+            int d = f.getFireworkMeta().getPower();
+            event.setDamage(d);
         }
 
         if (event.getDamager() instanceof SmallFireball fireball) {
@@ -324,8 +375,27 @@ public class Players extends DefaultListener {
             }
         }
 
-        if (event.getDamager() instanceof Snowball)
-            event.setDamage(1.2);
+        if (event.getDamager() instanceof Snowball s) {
+            if (s.getShooter() instanceof Player p) {
+                if (kit.kits.get(p.getUniqueId()) != null) {
+                    event.setDamage(1.2);
+                    Kit k = kit.kits.get(p.getUniqueId());
+
+                    if (k instanceof Snowballer) {
+                        event.setDamage(1.0);
+                    }
+
+                    if (k instanceof Tank) {
+                        event.setDamage(1.3);
+                        if (s.getFireTicks() > 0) event.getEntity().setFireTicks(30);
+                    }
+
+                }
+            }
+            if (s.getShooter() instanceof SnowGolem) {
+                event.setDamage(0.8);
+            }
+        }
 
         if (event.getDamager() instanceof Egg) {
             event.setCancelled(true);  // suppress vanilla egg “knockback damage”
@@ -362,35 +432,25 @@ public class Players extends DefaultListener {
             return;
         }
 
-        if (event.getDamager() instanceof Player p) {
-            // on Cane (stick) hit
-//            main.broadcast("registered damaged");
-            if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.STICK) {
+        if (event.getDamager() instanceof Player p && main.kit.kits.get(p.getUniqueId()) instanceof Kit k) {
+            if(k instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.STICK) {
                 g.onCaneHit();
-//                main.broadcast("grandma hit with cane");
             }
-            //on Classic Cane (blaze rod) hit
-            else if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.BLAZE_ROD) {
+            else if(k instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.BLAZE_ROD) {
                 new BukkitRunnable() {
                     @Override
                     public void run() {
                         g.onClassicCaneHit();
                     }
                 }.runTaskLater(main, 1L);
-
-//                 new BukkitRunnable() {
-//
-//                     public void run() {
-//                         Vector velocity = event.getEntity().getVelocity();
-//                         Vector upVec = new Vector(0.0f,0.5f,0.0f);
-//                         event.getEntity().setVelocity(velocity.add(upVec));}
-//
-//                 }.runTaskLater(main,1L);
-
-
-
-//                main.broadcast("grandma hit with classic cane");
             }
+
+            if (k instanceof Spy s) {
+                if (s.isHoldingShank()) {
+                    s.reshank();
+                }
+            }
+
         }
         if(event.getEntity() instanceof Player) {
             Player p = (Player) event.getEntity();
@@ -399,8 +459,8 @@ public class Players extends DefaultListener {
                 if(attacker.getInventory().getItemInMainHand().getType() == Material.DIAMOND_PICKAXE)
                     event.setDamage(0.5);
                 if(main.getKits().get(attacker.getUniqueId()) != null && main.getKits().get(attacker.getUniqueId()) instanceof Spy && attacker.getInventory().getItemInMainHand().getType() == Material.IRON_HOE) {
-                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*2, 0));
-                    p.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 20 * 3, 2));
+//                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*2, 0));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 20 * 2, 2));
                 }
             }
         }
@@ -411,8 +471,9 @@ public class Players extends DefaultListener {
 
     @EventHandler
     public void pickup(EntityPickupItemEvent event) {
-        if(main.game.started)
+        if(main.game.started) {
             event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -427,14 +488,22 @@ public class Players extends DefaultListener {
         // so hacky but we ball
         // getPotionEffect returns null if they don't have that effect
         if (slowness != null && slowness.getAmplifier() > 10) {
-            Location to = event.getTo();
-            Location from = event.getFrom();
-            to.setX(from.getX());
-            to.setY(from.getY());
-            to.setZ(from.getZ());
-            event.setTo(to);
-            event.getPlayer().setFreezeTicks(10);
+            float toYaw = event.getTo().getYaw();
+            float toPitch = event.getTo().getPitch();
+
+            Location newLoc = event.getFrom().clone();
+            newLoc.setYaw(toYaw);
+            newLoc.setPitch(toPitch);
+
+            event.setTo(newLoc);
+
         }
+
+        Kit k = main.kit.kits.get(event.getPlayer().getUniqueId());
+        if (k != null) {
+            k.realVelocity = (event.getTo().toVector().subtract(event.getFrom().toVector()));
+        }
+
         if(!main.game.started)
             return;
         double strength = 1.5;
@@ -455,14 +524,63 @@ public class Players extends DefaultListener {
     }
 
     @EventHandler
+    public void onHeal(EntityRegainHealthEvent event) {
+        if (event.getRegainReason() == EntityRegainHealthEvent.RegainReason.MAGIC) {
+            if (event.getEntity() instanceof Player p && p.hasPotionEffect(PotionEffectType.INSTANT_HEALTH)) {
+                if (p.getPotionEffect(PotionEffectType.INSTANT_HEALTH).getAmplifier() == 123) {
+                    event.setAmount(0.5);
+                }
+            }
+        }
+    }
+
+    @EventHandler
     public void food(FoodLevelChangeEvent event) {
-        event.setFoodLevel(20);
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onFoodConsumed(PlayerItemConsumeEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onPlayerShootBow(EntityShootBowEvent event) {
+        if (event.getEntity() instanceof Player p) {
+            Kit k = kit.kits.get(p.getUniqueId());
+            if (k instanceof Archer a) {
+//                event.getConsumable().setAmount(event.getConsumable().getAmount() + 1);
+                a.setArrows();
+                a.switchToBow(a.getPlayer().getInventory().getHeldItemSlot());
+//                event.setConsumeItem(false);
+            }
+            if (k instanceof Engineer e) {
+                e.onFireworkConsumed(event);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onFireworkExplode(FireworkExplodeEvent event) {
+        if (event.getEntity().getShooter() instanceof Player p) {
+            Kit k = kit.kits.get(p.getUniqueId());
+            if (k instanceof Engineer e) {
+                event.getEntity().setShooter(null);
+            }
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onItemDurabilityLoss(PlayerItemDamageEvent event) {
         // prevent *any* item from losing durability
         event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onItemPickup(EntityPickupItemEvent event) {
+        if (event.getEntity() instanceof Player p) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -589,8 +707,9 @@ public class Players extends DefaultListener {
 
     @EventHandler
     public void onPlayerDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
+        if (event.getEntity() instanceof Player player) {
+            if (event.getCause() == EntityDamageEvent.DamageCause.VOID)
+                event.setDamage(player.getHealth());
             if(event.getCause() == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION)
                 event.setDamage(0);
             if(event.getCause() == EntityDamageEvent.DamageCause.LIGHTNING)
@@ -601,12 +720,40 @@ public class Players extends DefaultListener {
 
                 event.setDamage(EntityDamageEvent.DamageModifier.ARMOR, 0);
             }
+
             if(event.getCause() == EntityDamageEvent.DamageCause.FALL) {
-                if(kit.kits.get(event.getEntity().getUniqueId()) instanceof Grandpa) {
-                    Grandpa g = (Grandpa) kit.kits.get(event.getEntity().getUniqueId());
-                    if(g.fallImmune) {
-                        g.fallImmune = false;
-                        event.setDamage(0);
+                if (kit.kits.get(player.getUniqueId()) != null) {
+                    Kit k = kit.kits.get(player.getUniqueId());
+
+
+                    event.setDamage((event.getDamage() - 3.0) / 3.0);
+
+                    if (event.getDamage() < 1) {
+                        event.setCancelled(true);
+                        return;
+                    }
+
+                    if (k instanceof Grandpa g) {
+                        if(g.fallImmune) {
+                            g.fallImmune = false;
+                            event.setDamage(0);
+                        }
+                    }
+                }
+            }
+
+            if (kit.kits.get(player.getUniqueId()) != null) {
+                Kit k = kit.kits.get(player.getUniqueId());
+                if (event.getDamage() > 0) {
+                    k.procHungerDamage();
+
+                    if (k instanceof Runner r) {
+                        r.damaged = true;
+                    }
+
+                    if (k instanceof Spy s) {
+                        s.uninvis();
+                        s.reshank();
                     }
                 }
             }

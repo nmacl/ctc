@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.macl.ctc.Main;
+import org.macl.ctc.kits.Kit;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
@@ -43,14 +44,18 @@ public class CombatTracker {
             entry("mystic sap", "%killer%'s mystic sap poisoned %victim%"),
             entry("void bomb", "%killer% has detained %victim% at the end of time"),
             entry("cod sniper", "%killer% sniped %victim% with a fish"),
-            entry("Fireball", "%victim% got shotgunned by %killer%"),
+            entry("backblast","%victim% tasted %killer%'s rocket fuel"),
+            entry("snowSlam","%victim% was smushed by %killer%'s Snow Slam"),
+            entry("Fireball", "%victim% ate a shotgun slug from %killer%"),
+            entry("Nuke", "%victim% was blasted into next week by %killer%"),
+            entry("napalm", "%killer% turned %victim% into cinders"),
             entry("Shulker Bullet", "%killer%'s pepper'd %victim% in the face"),
             entry("Snowball", "%killer% pummeled %victim% with snowballs"),
-            entry("Spectral Arrow", "%victim% got frostbite from %killer%'s frozen arrow"),
+            entry("Spectral Arrow", "%victim% got frostbite from %killer%'s frost dagger"),
             entry("Sword", "%victim% got slashed by %killer%"),
             entry("Shovel", "%killer% dug up %victim%"),
             entry("Hoe", "%killer% poisoned %victim% with a hoe"),
-            entry("chainsaw", "%killer% has sawed %victim% in half using Chain-Axe")
+            entry("chainsaw", "%killer% brutally sawed %victim% in half")
     );
 
     private record Hit(UUID attackerId, String attackerName, String ability, double amount, long ts) {}
@@ -84,16 +89,21 @@ public class CombatTracker {
 
         double oldHealth = victim.getHealth();
 
-        // Clamp new health
         newHealth = Math.max(0.0, newHealth);
 
         double delta = oldHealth - newHealth; // >0 = damage, <0 = heal
 
         if (delta > 0) {
+            victim.damage(0.01);
             tagHit(victim, attacker, ability, delta);
+
+            Kit k = main.kit.kits.get(victim.getUniqueId());
+            if (k != null) {
+                k.procHungerDamage();
+            }
+
         }
 
-        // Apply once
         victim.setHealth(newHealth);
     }
 

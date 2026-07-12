@@ -51,7 +51,8 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
     public StatsManager stats;
     private DatabaseManager db;
     private HologramManager hologramManager;
-    private File statsFile;  // Store stats file path for Docker volume support
+    private File statsFile;
+    private File debugFile;// Store stats file path for Docker volume support
     public String prefix = ChatColor.GOLD + "[CTC] " + ChatColor.GRAY;
 
     public void send(Player p, String text, ChatColor color) {
@@ -137,14 +138,53 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         registerEvents();
         getCommand("stats").setExecutor(new org.macl.ctc.commands.StatsCommand(this));
 
+        String debugPath = System.getenv("CTC_DEBUG_FILE");
+
+        if (debugPath != null && !debugPath.isEmpty()) {
+            debugFile = new File(debugPath);
+            getLogger().info("Using debug file from environment: " + debugPath);
+
+            // Ensure parent directories exist
+            File parentDir = debugFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                if (parentDir.mkdirs()) {
+                    getLogger().info("Created debug directory: " + parentDir.getAbsolutePath());
+                }
+            }
+        } else {
+            // Fallback to plugin data folder
+            debugFile = new File(getDataFolder(), "debug.yml");
+            getLogger().info("Using default debug file: " + debugFile.getAbsolutePath());
+        }
+
+        // 3) Create debug.yml if it doesn't exist
+        if (!debugFile.exists()) {
+            try (PrintWriter out = new PrintWriter(debugFile)) {
+                out.println("debug: 0");                // minimal valid YAML
+                getLogger().info("Created new debug file");
+            } catch (IOException e) {
+                getLogger().severe("Could not create debug.yml: " + e.getMessage());
+            }
+        }
+
+        // 4) Now safely load it, get copied, @macl
+        FileConfiguration debugCfg = YamlConfiguration.loadConfiguration(debugFile);
+
+        boolean startsGame = true;
+
+        if (debugCfg.getInt("debug") > 0) {
+            startsGame = false;
+        }
 
         // auto start game
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                game.start();
-            }
-        }.runTaskLater(this, 100L);
+        if (startsGame) {
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    game.start();
+                }
+            }.runTaskLater(this, 100L);
+        }
 
     }
 
@@ -282,8 +322,30 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
                 return true;
             } else if(args[0].equalsIgnoreCase("holo")) {
                 spawnHeadDebugBoard(p);
+            } else if (args[0].equalsIgnoreCase("cooldown")) {
+
+                Kit k = (kit.kits.get(p.getUniqueId()));
+
+                if (k == null) {
+                    send(p, "No kit detected! This command requires a kit to use (for now)", ChatColor.DARK_AQUA);
+                } else if (args.length < 2) {
+                    send(p, "Usage: /ctc cooldown <default|seconds|precise>", ChatColor.RED);
+                } else if (args[1].equalsIgnoreCase("default")) {
+                    k.cooldownDisplayType = 0;
+                    send(p, "Cooldowns will now be displayed in dots and lines!", ChatColor.RED);
+                } else if (args[1].equalsIgnoreCase("seconds")) {
+                    k.cooldownDisplayType = 1;
+                    send(p, "Cooldowns will now be displayed in seconds!", ChatColor.BLUE);
+                } else if (args[1].equalsIgnoreCase("precise")) {
+                    k.cooldownDisplayType = 2;
+                    send(p, "Cooldowns will now be precise seconds!", ChatColor.AQUA);
+                } else {
+                    send(p, "Unknown cooldown type: " + args[1] + ". Use <default|seconds|precise>", ChatColor.RED);
+                }
+                return true;
             }
         }
+
 
         // If the player (or console) uses our command correct, we can return true
         return true;
@@ -298,12 +360,27 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
             boolean fire,
             boolean breaksBlocks,
             boolean damagesAllies,
-            String ability
+            String ability,
+            double falloff
     ) {
+
+        falloff = Math.clamp(falloff,0.0,1.0);
+
         Location center = l.clone().add(0, 1, 0);
         World world = center.getWorld();
 
-        world.createExplosion(center, 2f, fire, breaksBlocks);
+        float power = (maxDistance / 3f);
+        power = Math.max(power,2f);
+
+        world.createExplosion(center, power + ((float) maxDamage / 20), fire, breaksBlocks);
+//        world.spawnParticle(Particle.FLASH,center,1,null);
+        Particle.FLASH.builder()
+                        .location(center)
+                        .count(1)
+                        .color(255,255,255)
+                        .spawn();
+
+        world.spawnParticle(Particle.GUST_EMITTER_LARGE,center,1,null);
 
         final int numberOfRays = 6;
         double[] offsets = {0, 1, 2, 3, 4, 5};
@@ -333,18 +410,39 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
 
             if (raysHit == 0) continue;
 
+            double calcFalloff = ((1 - ((distance / maxDistance) * falloff) ));
+            calcFalloff = Math.clamp(calcFalloff,0.0,1.0);
             double damageFactor = (double) raysHit / numberOfRays;
-            double damage = maxDamage * (1 - (distance / maxDistance)) * damageFactor;
+            double damage = maxDamage * calcFalloff * damageFactor;
             if (damage <= 0) continue;
 
             if (isSelf) {
                 // self damage: do NOT track
                 target.setHealth(Math.max(0.0, target.getHealth() - damage));
+
+                Kit k = kit.kits.get(target.getUniqueId());
+                if (k != null) {
+                    k.procHungerDamage();
+                }
+
             } else {
                 // tracked damage
                 combatTracker.setHealth(target, target.getHealth() - damage, p, ability);
             }
         }
+    }
+
+    public void fakeExplode(
+            Player p,
+            Location l,
+            int maxDamage,
+            int maxDistance,
+            boolean fire,
+            boolean breaksBlocks,
+            boolean damagesAllies,
+            String ability
+    ) {
+        fakeExplode(p,l,maxDamage,maxDistance,fire,breaksBlocks,damagesAllies,ability,1.0f);
     }
 
     public ItemStack coreCrush() {

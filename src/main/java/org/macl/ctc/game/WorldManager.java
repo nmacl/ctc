@@ -182,14 +182,14 @@ public class WorldManager {
         // Get the world name from the config
         String worldName = main.getConfig().getString(path + ".world");
         if (worldName == null) {
-            main.broadcast("World name for red location is not set in config.");
+//            main.broadcast("World name for red location is not set in config.");
             return null;
         }
 
         // Get the world
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            main.broadcast("World '" + worldName + "' is not loaded.");
+//            main.broadcast("World '" + worldName + "' is not loaded.");
             return null;
         }
 
@@ -197,7 +197,7 @@ public class WorldManager {
         if (!main.getConfig().contains(path + ".x") ||
                 !main.getConfig().contains(path + ".y") ||
                 !main.getConfig().contains(path + ".z")) {
-            main.broadcast("Red location coordinates are not fully set in config.");
+//            main.broadcast("Red location coordinates are not fully set in config.");
             return null;
         }
 
@@ -260,14 +260,14 @@ public class WorldManager {
         // Get the world name from the config
         String worldName = main.getConfig().getString(path + ".world");
         if (worldName == null) {
-            main.broadcast("World name for center location is not set in config.");
+//            main.broadcast("World name for center location is not set in config.");
             return centers;  // Return empty list
         }
 
         // Get the world
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            main.broadcast("World '" + worldName + "' is not loaded.");
+//            main.broadcast("World '" + worldName + "' is not loaded.");
             return centers;  // Return empty list
         }
 
@@ -275,7 +275,7 @@ public class WorldManager {
         if (!main.getConfig().contains(path + ".x") ||
                 !main.getConfig().contains(path + ".y") ||
                 !main.getConfig().contains(path + ".z")) {
-            main.broadcast("Center location coordinates are not fully set in config.");
+//            main.broadcast("Center location coordinates are not fully set in config.");
             return centers;  // Return empty list
         }
 

@@ -37,6 +37,8 @@ public class Lumberjack extends Kit {
 
     boolean isSawing = false;
 
+    mysticSapProcess activeMysticSap;
+
     int mysticSapUses = 0;
 
     public Lumberjack(Main main, Player p, KitType type) {
@@ -58,6 +60,7 @@ public class Lumberjack extends Kit {
         e.addItem(mysticSap);
         e.setHelmet(newItem(Material.LEATHER_HELMET, ChatColor.GOLD + "Lumberjack Cap"));
         e.setChestplate(newItem(Material.IRON_CHESTPLATE, ChatColor.GREEN + "Oiled-Up Shirt"));
+        e.setBoots(newItem(Material.LEATHER_BOOTS, ChatColor.DARK_GREEN + "Forest Treads"));
         giveWool();
         giveWool();
         regenItem("Log", logChuck, 10, 2, 1);
@@ -78,7 +81,12 @@ public class Lumberjack extends Kit {
         mysticSapUses = 2;
         p.setLevel(mysticSapUses);
 
+        Objects.requireNonNull(getLog()).addUnsafeEnchantment(Enchantment.MENDING,0);
+        logChuck.addUnsafeEnchantment(Enchantment.MENDING,0);
+
         mysticSapProcess m = new mysticSapProcess();
+        activeMysticSap = m;
+        m.isMain = true;
         m.parent = p;
         m.lifetime = 12*20;
         m.consumable = false;
@@ -88,14 +96,17 @@ public class Lumberjack extends Kit {
     }
 
     private class mysticSapProcess extends BukkitRunnable {
+        boolean isMain = false;
         int particles = 50;
         double rad = 3.0;
         int current_lifetime = 0;
-        int lifetime = 20*8;
+        int lifetime = 20*7;
         boolean consumable = false;
         boolean active = true;
         Location loc;
         Entity parent;
+
+
 
         public void run() {
 
@@ -104,7 +115,7 @@ public class Lumberjack extends Kit {
                 if (!parent.isValid()) {
                     active = true;
                     loc = loc.getBlock().getLocation().add(0.5,0.5,0.5);
-                    main.broadcast("Parent no longer valid");
+//                    main.broadcast("Parent no longer valid");
                 } else {
 
                     loc = parent.getLocation().add(parent.getVelocity());
@@ -116,11 +127,16 @@ public class Lumberjack extends Kit {
 
             if (current_lifetime <= lifetime) {
                 current_lifetime++;
+                if (isMain) {
+                    setPotatoAmount(((lifetime - current_lifetime) / 20) + 1);
+                }
                 handleMysticSap();
             } else {
-                if (!consumable) {
+                if (isMain) {
                     mysticSapUses = 0;
                     p.setLevel(mysticSapUses);
+                    Objects.requireNonNull(getLog()).removeEnchantments();
+                    logChuck.removeEnchantments();
                 }
                 cancel();
             }
@@ -131,7 +147,7 @@ public class Lumberjack extends Kit {
         }
 
         public void createHeadParticles() {
-            Particle.DustOptions teamDust = new Particle.DustOptions(Color.fromRGB(255, 255, 255), 2);;
+            Particle.DustOptions teamDust = new Particle.DustOptions(Color.fromRGB(255, 255, 255), 3);
             if(main.game.redHas(p))
                 teamDust = new Particle.DustOptions(Color.fromRGB(255, 0, 0), 2);
             if(main.game.blueHas(p))
@@ -144,12 +160,6 @@ public class Lumberjack extends Kit {
         }
 
         public void createRingParticles() {
-//            Particle.DustOptions teamDust = new Particle.DustOptions(Color.fromRGB(255, 255, 255), 2);;
-//            if(main.game.redHas(p))
-//                teamDust = new Particle.DustOptions(Color.fromRGB(255, 0, 0), 2);
-//            if(main.game.blueHas(p))
-//                teamDust = new Particle.DustOptions(Color.fromRGB(0, 0, 255), 2);
-
             for (int i = 0; i < particles; i++) {
 
                 double theta = Math.random() * 2 * Math.PI;
@@ -163,7 +173,7 @@ public class Lumberjack extends Kit {
 
         public void addPotionEffect(Player p,PotionEffect e) {
             if (!p.hasPotionEffect(e.getType())) {
-                    p.addPotionEffect(e);
+                p.addPotionEffect(e);
             } else if ((p.getPotionEffect(e.getType()).getDuration() < 5)) {
                 p.addPotionEffect(e);
             }
@@ -186,20 +196,16 @@ public class Lumberjack extends Kit {
                     if (main.game.sameTeam(p.getUniqueId(),p2.getUniqueId())) { //same team logic
                         if (!consumable) { // give constant regen for 2 sec
                             addPotionEffect(p2,new PotionEffect(PotionEffectType.REGENERATION, 40, 1));
-                        } else { // give 4 absorption hearts for 12 secs
-                            addPotionEffect(p2,new PotionEffect(PotionEffectType.ABSORPTION, 20*12, 1));
+                        } else { // give 2 absorption hearts for 12 secs
+                            addPotionEffect(p2,new PotionEffect(PotionEffectType.ABSORPTION, 20*12, 0));
                             p.getWorld().playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_RESONATE, 1.0f, 1.0f);
                             cancel();
                         }
                     } else { // other team logic
                         if (!consumable) { // give constant poison 3 for 2 sec
                             addPotionEffect(p2,new PotionEffect(PotionEffectType.POISON, 40, 2));
-                            // hacky garbage
-                            //main.combatTracker.tagDamage(p2, 0.001, p, "mystic sap");
                         } else { // give poison for 6 sec
-                            addPotionEffect(p2,new PotionEffect(PotionEffectType.POISON, 20*8, 0));
-                            // more hacky garbage
-                            //main.combatTracker.tagDamage(p2, 0.001, p, "mystic sap");
+                            addPotionEffect(p2,new PotionEffect(PotionEffectType.POISON, 20*6, 0));
                             p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BREEZE_DEATH, 1.0f, 0.9f);
                             cancel();
                         }
@@ -213,7 +219,7 @@ public class Lumberjack extends Kit {
     public void chuckLog() {
 
         if (isOnCooldown("Chuck")) return;
-        setCooldown("Chuck", 1, Sound.BLOCK_WOOD_HIT, () -> {});
+        setCooldown("Chuck", 3, Sound.BLOCK_WOOD_HIT, () -> {});
 
         int logs = p.getInventory().first(Material.OAK_LOG);
         p.getInventory().getItem(logs).setAmount(p.getInventory().getItem(logs).getAmount() - 1);
@@ -224,9 +230,9 @@ public class Lumberjack extends Kit {
         Vector dir = p.getLocation().getDirection();
         BlockData block = Material.OAK_LOG.createBlockData();
         FallingBlock log = p.getWorld().spawnFallingBlock(
-                p.getEyeLocation().subtract(0.0,0.1,0.0),
+                p.getEyeLocation().subtract(0.0,0.5,0.0),
                 block
-                );
+        );
 
 
         mysticSapProcess s;
@@ -234,9 +240,24 @@ public class Lumberjack extends Kit {
         if (mysticSapUses > 0) {
             mysticSapUses--;
 
+            if (activeMysticSap != null) {
+                activeMysticSap.rad -= 1.75;
+                activeMysticSap.lifetime -= 2*20;
+                activeMysticSap.particles -= 15;
+                if (activeMysticSap.current_lifetime > activeMysticSap.lifetime) {
+                    setPotatoAmount(1);
+                }
+
+                if (mysticSapUses <= 0) {
+                    activeMysticSap.cancel();
+                    setPotatoAmount(1);
+                    logChuck.removeEnchantments();
+                }
+            }
+
             p.setLevel(mysticSapUses);
             s = new mysticSapProcess();
-            s.lifetime = 20 * 20;
+            s.lifetime = 14*20;
             s.active = false;
             s.consumable = true;
             s.rad = 2;
@@ -245,7 +266,7 @@ public class Lumberjack extends Kit {
 
         }
 
-        log.setVelocity(dir.multiply(1.44)); // Reduced by 20% (1.8 * 0.8 = 1.44)
+        log.setVelocity(dir.multiply(1.8));
         if (!p.getPassengers().isEmpty()) {
             for (Entity e : p.getPassengers()) {
                 log.addPassenger(e);
@@ -276,12 +297,17 @@ public class Lumberjack extends Kit {
         main.fakeExplode(p,loc,12,3,false,false,false, "log");
     }
 
+    boolean canSaw = true;
+
     public void sawBlocks() {
         if (getAxeMeta() != null) {
             if (getAxeDamage() >= 32){
                 return;
             }
         }
+
+        if (!canSaw) return;
+        canSaw = false;
 
         setAxeDamage(1);
         isSawing = true;
@@ -312,22 +338,22 @@ public class Lumberjack extends Kit {
 
             // Skip teammates
             if (!main.game.sameTeam(p.getUniqueId(), victim.getUniqueId())) {
-                double dmg = 0.5;
+                double dmg = 0.35;
                 double newHp = victim.getHealth() - dmg;
 
                 main.getCombatTracker().setHealth(victim, newHp, p, "chainsaw");
 
-                victim.playHurtAnimation(0);
 
-                // Hurt sound
-                victim.playSound(
-                        p.getLocation(),
-                        Sound.ENTITY_PLAYER_HURT,
-                        1.0f,
-                        0.7f);
-                victim.setNoDamageTicks(0);
+//                victim.setNoDamageTicks(0);
             }
         }
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                canSaw = true;
+            }
+        }.runTaskLater(main, 1L);
     }
 
     private class lumberjackProcess extends BukkitRunnable {
@@ -383,6 +409,29 @@ public class Lumberjack extends Kit {
             return null;
         }
     }
+
+    private ItemStack getLog() {
+        if (p.getInventory().getItem(1).getType() == Material.OAK_LOG) {
+            return p.getInventory().getItem(1);
+        } else {
+            return null;
+        }
+    }
+
+    private ItemStack getPotato() {
+        if (p.getInventory().getItem(2).getType() == Material.POTATO) {
+            return p.getInventory().getItem(2);
+        } else {
+            return null;
+        }
+    }
+
+    private void setPotatoAmount(int amount) {
+        if (getPotato() != null) {
+            getPotato().setAmount(amount);
+        }
+    }
+
 
     private void setAxeDamage(int damage) {
         if (getAxeMeta() != null) {
