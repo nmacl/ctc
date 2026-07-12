@@ -60,6 +60,7 @@ public class Lumberjack extends Kit {
         e.addItem(mysticSap);
         e.setHelmet(newItem(Material.LEATHER_HELMET, ChatColor.GOLD + "Lumberjack Cap"));
         e.setChestplate(newItem(Material.IRON_CHESTPLATE, ChatColor.GREEN + "Oiled-Up Shirt"));
+        e.setBoots(newItem(Material.LEATHER_BOOTS, ChatColor.DARK_GREEN + "Forest Treads"));
         giveWool();
         giveWool();
         regenItem("Log", logChuck, 10, 2, 1);
@@ -114,7 +115,7 @@ public class Lumberjack extends Kit {
                 if (!parent.isValid()) {
                     active = true;
                     loc = loc.getBlock().getLocation().add(0.5,0.5,0.5);
-                    main.broadcast("Parent no longer valid");
+//                    main.broadcast("Parent no longer valid");
                 } else {
 
                     loc = parent.getLocation().add(parent.getVelocity());
@@ -172,7 +173,7 @@ public class Lumberjack extends Kit {
 
         public void addPotionEffect(Player p,PotionEffect e) {
             if (!p.hasPotionEffect(e.getType())) {
-                    p.addPotionEffect(e);
+                p.addPotionEffect(e);
             } else if ((p.getPotionEffect(e.getType()).getDuration() < 5)) {
                 p.addPotionEffect(e);
             }
@@ -231,7 +232,7 @@ public class Lumberjack extends Kit {
         FallingBlock log = p.getWorld().spawnFallingBlock(
                 p.getEyeLocation().subtract(0.0,0.5,0.0),
                 block
-                );
+        );
 
 
         mysticSapProcess s;

@@ -1,5 +1,7 @@
 package org.macl.ctc.kits;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.minecraft.world.item.alchemy.Potion;
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -7,14 +9,15 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
-import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
+import org.jetbrains.annotations.Nullable;
 import org.macl.ctc.Main;
 
 import java.util.ArrayList;
@@ -23,9 +26,9 @@ import java.util.Objects;
 
 public class Artificer extends Kit {
 
-    int voidBombRadius = 5;
+    int voidBombRadius = 6;
     boolean voidReady = false;
-    
+
     ItemStack frost;
 
     public Artificer(Main main, Player p, KitType type) {
@@ -37,12 +40,11 @@ public class Artificer extends Kit {
         inv.setLeggings(new ItemStack(Material.CHAINMAIL_LEGGINGS));
         inv.setBoots(new ItemStack(Material.LEATHER_BOOTS));
 
-        // ability items
         inv.setItem(0, newItem(Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.RED + "Flamethrower"));
         frost = new ItemStack(Material.TIPPED_ARROW);
         PotionMeta meta = (PotionMeta) frost.getItemMeta();
-        meta.setBasePotionData(new PotionData(PotionType.SLOWNESS));
-        meta.setDisplayName(ChatColor.BLUE + "Frost Dagger");
+        meta.setBasePotionType(PotionType.SLOWNESS);
+        meta.displayName(Component.text(ChatColor.AQUA + "Frost Dagger"));
         frost.setItemMeta(meta);
         inv.setItem(1, frost);
         inv.setItem(2, newItem(Material.FEATHER, ChatColor.WHITE + "Updraft"));
@@ -50,8 +52,6 @@ public class Artificer extends Kit {
         giveWool(); giveWool();
     }
 
-    // Flamethrower: 9s cooldown, does short burst of fire
-// ─── Flamethrower ─────────────────────────────────────────────────────────────
     public void useFlamethrower() {
         if (isOnCooldown("Flamethrower")) return;
         setCooldown("Flamethrower", 9, Sound.BLOCK_AMETHYST_CLUSTER_HIT, () -> {
@@ -60,12 +60,13 @@ public class Artificer extends Kit {
         p.getInventory().setItem(0, newItem(Material.HOST_ARMOR_TRIM_SMITHING_TEMPLATE, ChatColor.AQUA + "Recharging…"));
 
         new BukkitRunnable() {
-            int count = 0, hits = 0;
-            boolean canGiveVoid = false;
+            int count = 0;
+            int hits = 0;
+            final int maxCount = 25;
 
             @Override
             public void run() {
-                if (count++ >= 25) {
+                if (count++ >= maxCount) {
                     cancel();
                     p.getWorld().playSound(p.getLocation(), Sound.BLOCK_LANTERN_BREAK, 2f, 0.5f);
                     return;
@@ -75,47 +76,42 @@ public class Artificer extends Kit {
                 Location start = p.getEyeLocation().subtract(0, 0.5, 0);
                 Vector dir    = start.getDirection();
                 double step   = 0.2, maxLen = 10, damageRad = 0.7;
-                int damage    = 2;
-                boolean hitPlayer = false;
+                int totalDamage = 6;
+                ArrayList<LivingEntity> hitPlayers = new ArrayList<>();
 
-                // trace the flame
-                for (int i = 0; i * step <= maxLen; i++) {
+                for (int i = 0; i * step <= maxLen; i++) { // find le players
                     Location loc = start.clone().add(dir.clone().multiply(i * step));
                     if (p.getWorld().rayTraceBlocks(start, dir, i * step) != null) break;
                     p.getWorld().spawnParticle(Particle.FLAME, loc, 0);
-
-                    // damage nearby
                     for (Entity ent : p.getWorld().getNearbyEntities(loc, damageRad, damageRad, damageRad)) {
                         if (ent instanceof LivingEntity le && !le.equals(p) && p.hasLineOfSight(le)) {
-                            // tag damage by player
-                            double newHealth = le.getHealth() - 0.01;
-                            main.combatTracker.setHealth((Player) le, newHealth, p, "flamethrower");
-
-                            hitPlayer = true;
-
-                            if (++hits >= 3) {
-                                hits = 0;
-                                canGiveVoid = true;
-                            }
-
-                            le.setFireTicks(le.getFireTicks() + 10);
-                            if (le.getFireTicks() >= 60) {
-                                le.setFireTicks(60);
+                            if (!hitPlayers.contains(le)) {
+                                hitPlayers.add(le);
                             }
                         }
                     }
                 }
 
-                if (hitPlayer && canGiveVoid) {
-                    addVoidFragments(1);
-                    canGiveVoid = false;
+                for (LivingEntity e : hitPlayers) { //then we deal damage
+                    double newHealth = e.getHealth() - ((double) totalDamage / maxCount);
+                    if (e instanceof Player) main.combatTracker.setHealth((Player) e, newHealth, p, "flamethrower");
+                    else e.damage(((double) totalDamage / maxCount));
+                    e.setFireTicks(e.getFireTicks() + 10);
+                    if (e.getFireTicks() >= 60) {
+                        e.setFireTicks(60);
+                    }
+                }
+
+                if (!hitPlayers.isEmpty()) { // and track if any were hit for the void bomb
+                    if (++hits >= 4) {
+                        hits = 0;
+                        addVoidFragments(1);
+                    }
                 }
             }
         }.runTaskTimer(main, 0, 2);
     }
 
-
-    // Frost dagger: simple projectile, 5s cooldown
     public void useFrostDagger() {
         if (isOnCooldown("FrostDagger")) return;
         setCooldown("FrostDagger", 7, Sound.BLOCK_POWDER_SNOW_BREAK, () -> {
@@ -128,7 +124,7 @@ public class Artificer extends Kit {
 
         SpectralArrow arrow = p.launchProjectile(SpectralArrow.class);
         arrow.setShooter(p);
-        arrow.setVelocity(p.getLocation().getDirection().multiply(1.5));
+        arrow.setVelocity(p.getLocation().getDirection().multiply(1.6));
     }
 
     // Void bomb: spawns block, explodes after landing, 8s cooldown
@@ -146,12 +142,6 @@ public class Artificer extends Kit {
         arrow.setShooter(p);
 
         Vector dir = p.getEyeLocation().getDirection();
-//        Item bomb = p.getWorld().dropItem(p.getEyeLocation(), new ItemStack(Material.BLACK_CONCRETE_POWDER));
-
-
-
-//        arrow.addPassenger(bomb);
-//        arrow.addCustomEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 20*2000, 1),true);
         arrow.setVelocity(dir.multiply(1.5));
 
         p.getWorld().playSound(p.getLocation(), Sound.ENTITY_CHICKEN_EGG, 10f, 0.8f);
@@ -160,7 +150,6 @@ public class Artificer extends Kit {
             int tick = 0;
             final int maxIter = 50;
             final double initRad = 0.3;
-//            final double finalRad = 4.7;
             Location bombLoc = null;
             final int particles = 450;
             final Particle.DustOptions blackDust = new Particle.DustOptions(Color.fromRGB(0, 0, 0), 2);
@@ -169,49 +158,29 @@ public class Artificer extends Kit {
 
             @Override
             public void run() {
-//                double finalParticles;
                 if (landed) {
                     rad = rad + 0.3;
                 }
                 if (rad > voidBombRadius) {
                     rad = voidBombRadius;
                 }
-//                rad = (initRad + (finalRad * (double) ((tick / maxIter)))); THIS WORKED LIKE 5 MINUTES AGO????
-//                if (rad > 5.0) {
-//                    rad = 5.0;
-//                }
-//                finalParticles = particles + (350 * ((double) tick / maxIter));
 
                 arrow.getWorld().spawnParticle(Particle.DUST, arrow.getLocation(), 10, blackDust);
 
                 if (arrow.isOnGround() || !arrow.isValid()) {
-//                    main.broadcast("on ground");
-                    bombLoc = arrow.getLocation(); // need to round this so the particles start from the center of the block
+                    bombLoc = arrow.getLocation().getBlock().getLocation().add(0.5,0.5,0.5);
                     if (!landed) {
-//                        main.broadcast("landed");
                         landed = true;
                         bombLoc.getWorld().playSound(bombLoc, Sound.BLOCK_BEACON_ACTIVATE, 20f, 0.7f);
                     }
-//                    bomb.remove();
                 }
-//                main.broadcast(Double.toString((initRad + (finalRad * (double) ((tick / maxIter))))));
                 if (bombLoc == null) {
-//                    main.broadcast("bombloc null");
                     return;
                 } else if ((tick % 3) == 0) {
-                    for (int i = 0; i < particles; i++) {
-
-                        double theta = Math.random() * 2 * Math.PI;
-                        double phi = Math.acos(2 * Math.random() - 1);
-                        double x = rad * Math.sin(phi) * Math.cos(theta);
-                        double y = rad * Math.sin(phi) * Math.sin(theta);
-                        double z = rad * Math.cos(phi);
-
-                        Location particleLocation = bombLoc.clone().add(x, y, z);
-                        Objects.requireNonNull(bombLoc.getWorld()).spawnParticle(Particle.DUST, particleLocation, 1, blackDust);
-                    }
+                    createSphereParticle(rad,bombLoc,particles,Particle.DUST,blackDust);
                 }
                 if (tick >= maxIter) {
+                    createSphereParticle(rad,bombLoc,particles,Particle.SQUID_INK,null,true,-0.3);
                     voidDeleteBlocks(bombLoc);
                     cancel();
                 }
@@ -221,11 +190,33 @@ public class Artificer extends Kit {
         }.runTaskTimer(main, 0, 1);
     }
 
+    public static <T> void createSphereParticle(double rad, Location loc, int count, Particle particle, @Nullable T data,boolean inward,double vel) {
+        for (int i = 0; i < count; i++) {
+
+            double theta = Math.random() * 2 * Math.PI;
+            double phi = Math.acos(2 * Math.random() - 1);
+            double x = rad * Math.sin(phi) * Math.cos(theta);
+            double y = rad * Math.sin(phi) * Math.sin(theta);
+            double z = rad * Math.cos(phi);
+
+            Location particleLocation = loc.clone().add(x, y, z);
+
+            if (!inward) {
+                x = 0; y = 0; z = 0;
+            }
+
+            loc.getWorld().spawnParticle(particle,particleLocation,0,x,y,z,vel,data);
+        }
+    }
+
+    public static <T> void createSphereParticle(double rad, Location loc, int count, Particle particle, @Nullable T data) {
+        createSphereParticle(rad,loc,count,particle,data,false,0.0);
+    }
+
+
     public void addVoidFragments(int amount) {
         if (!voidReady) {
             int stack = 0;
-
-
 
             if (p.getInventory().getItem(3) != null) {
                 stack = p.getInventory().getItem(3).getAmount();
@@ -246,7 +237,10 @@ public class Artificer extends Kit {
 
     // ─── Void‐bomb block cleanup ──────────────────────────────────────────────────
     public void voidDeleteBlocks(Location loc) {
-        loc.getWorld().playSound(loc, Sound.ENTITY_DRAGON_FIREBALL_EXPLODE, 10f, 0.5f);
+        loc.getWorld().playSound(loc, Sound.ENTITY_DRAGON_FIREBALL_EXPLODE, 2f, 0.2f);
+        loc.getWorld().playSound(loc, Sound.ENTITY_BREEZE_SHOOT, 8f, 0.3f);
+        loc.getWorld().playSound(loc, Sound.ENTITY_BREEZE_SHOOT, 8f, 2.0f);
+        loc.getWorld().playSound(loc, Sound.ENTITY_ALLAY_DEATH, 8f, 0.3f);
 
         // carve out the sphere…
         for (Location l : sphere(loc, voidBombRadius + 1)) {
@@ -263,6 +257,9 @@ public class Artificer extends Kit {
                 .getNearbyEntities(loc, voidBombRadius, voidBombRadius, voidBombRadius)) {
             if (ent instanceof Player victim && victim.getGameMode() != GameMode.SPECTATOR) {
                 main.combatTracker.setHealth(victim, 0, p, "void bomb");
+            }
+            if (ent instanceof LivingEntity l && !(ent instanceof Player)) {
+                l.setHealth(0);
             }
         }
     }

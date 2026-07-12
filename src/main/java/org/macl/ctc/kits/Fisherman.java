@@ -94,7 +94,10 @@ public class Fisherman extends Kit {
                             && !target.getUniqueId().equals(p.getUniqueId())
                             && hitThisShot.add(target.getUniqueId())) {
 
-                        double airborneDamage = target.isOnGround() ? 0 : 4;
+                        double airborneDamage = 0;
+                        if (main.kit.kits.get(target.getUniqueId()) instanceof Kit k) {
+                            if (!k.isOnGround()) airborneDamage = 4;
+                        }
                         // first drop them near-zero but never kill
                         main.combatTracker.setHealth(target, target.getHealth() - (6 + airborneDamage), p, "cod sniper");
 
@@ -274,20 +277,20 @@ public class Fisherman extends Kit {
                     salmon.setVelocity(new Vector(0,0,0));
                 } else {
                     salmon.setVelocity(
-                        (salmon.getLocation().toVector()).subtract(p.getLocation().toVector()).normalize().multiply(-1.5)
+                            (salmon.getLocation().toVector()).subtract(p.getLocation().toVector()).normalize().multiply(-1.5)
                     );
 
                     if (p == null) {
                         salmon.remove();
                         this.cancel();
                     }
-                        for (Entity e : salmon.getNearbyEntities(1.5, 0.5, 1.5)) {
-                            if (e == p) {
-                                p.getInventory().setItem(3,newItem(Material.COOKED_SALMON,ChatColor.GRAY + "Salmoned Out.."));
-                                salmon.remove();
-                                cancel();
-                            }
+                    for (Entity e : salmon.getNearbyEntities(1.5, 0.5, 1.5)) {
+                        if (e == p) {
+                            p.getInventory().setItem(3,newItem(Material.COOKED_SALMON,ChatColor.GRAY + "Salmoned Out.."));
+                            salmon.remove();
+                            cancel();
                         }
+                    }
 
                 }
 

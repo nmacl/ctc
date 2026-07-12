@@ -47,11 +47,6 @@ public class Blocks extends DefaultListener {
         Block block = event.getBlock();
         if(main.restricted.contains(event.getBlock().getType()) && main.game.started)
             event.setCancelled(true);
-
-        if(event.getBlock().getType() == Material.FROSTED_ICE) {
-            event.setCancelled(true);
-        }
-
         game.resetCenter(null);
 
         event.setDropItems(false);
@@ -121,16 +116,15 @@ public class Blocks extends DefaultListener {
         Block b = event.getBlock();
         Player p = event.getPlayer();
         game.resetCenter(p);
-
         Kit k = main.getKits().get(p.getUniqueId());
 
         if (k != null) {
 
             if (Tag.WOOL.isTagged(b.getType())) {
-                main.broadcast("is wool");
+//                main.broadcast("is wool");
                 ItemStack i = event.getItemInHand();
                 if (!k.getPlayer().getInventory().containsAtLeast(i,2)) {
-                    main.broadcast("does not contain wool");
+//                    main.broadcast("does not contain wool");
                     k.onWoolOut();
                 }
             }
@@ -173,6 +167,7 @@ public class Blocks extends DefaultListener {
                 }
             }
         }
+
     }
 
 
@@ -208,42 +203,29 @@ public class Blocks extends DefaultListener {
     }
 
     @EventHandler
-    public void blockFade(BlockFadeEvent event) {
-        if (event.getBlock().getType() == Material.FROSTED_ICE) {
-            event.setCancelled(true);
-            event.getBlock().setType(Material.AIR);
-        }
-    }
-
-    @EventHandler
     public void hit(ProjectileHitEvent event) {
         Block b = event.getHitBlock();
         if(b == null || b.getType() == Material.RED_STAINED_GLASS_PANE || b.getType() == Material.BLUE_STAINED_GLASS_PANE)
             return;
+
         if(event.getEntity().getShooter() instanceof Player && event.getEntity() instanceof Egg) {
             Player p = (Player) event.getEntity().getShooter();
             if(b != null) {
                 main.fakeExplode(p, b.getLocation(), 8, 6, false, true,true, "grenade");
-                Vector fromEggToPlayer = (p.getLocation().add(0,1,0).toVector().subtract(event.getEntity().getLocation().toVector()));
-                main.broadcast("" + fromEggToPlayer.length());
+                double yAdd = p.isSneaking() ? 0.75 : 1.0;
+                Vector fromEggToPlayer = (p.getLocation().add(0,yAdd,0).toVector().subtract(event.getEntity().getLocation().toVector()));
+//                main.broadcast("" + fromEggToPlayer.length());
                 if (fromEggToPlayer.length() < 3.5) {
-//                    main.broadcast("EggJump");
-//                    if (kit.kits.get(p.getUniqueId()) != null) {
-//                        Kit k = kit.kits.get(p.getUniqueId());
-//                        if (k instanceof Demolitionist) {
-//                            ((Demolitionist) k).eggJumping = true;
-//                        }
-//                    }
-                    p.setVelocity(fromEggToPlayer.normalize().multiply(1.65));
+
+                    double force = p.isSneaking() ? 1.8 : 1.65;
+                    p.setVelocity(fromEggToPlayer.normalize().multiply(force));
                     if (p.getHealth() > 0) {
                         p.setHealth(p.getHealth() + (2.5 - fromEggToPlayer.length()));
                     }
                 }
-             }
+            }
 
         }
-
-
         if(event.getEntity().getShooter() instanceof Player && event.getEntity() instanceof Arrow) {
             Player p = (Player) event.getEntity().getShooter();
             if(event.getEntity() != null)

@@ -5,7 +5,6 @@ import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -96,22 +95,20 @@ public class Interact extends DefaultListener {
             Kit k = kit.kits.get(p.getUniqueId());
             if (k instanceof Engineer) {
                 Engineer e = (Engineer) k;
-                if (m == Material.CROSSBOW)
+                if (m == Material.CROSSBOW) {
                     e.reloadFireworks();
+                    }
             }
         }
     }
+
 
     boolean second = false;
 
     private void rightClick(PlayerInteractEvent event) {
         // we only care about right-click actions
         Action a = event.getAction();
-        EquipmentSlot hand = event.getHand();
-
         if (a != Action.RIGHT_CLICK_AIR && a != Action.RIGHT_CLICK_BLOCK) return;
-
-        if (hand == EquipmentSlot.OFF_HAND) return;
 
         Player    p   = event.getPlayer();
         ItemStack itm = (event.getHand() == EquipmentSlot.HAND)
@@ -124,8 +121,7 @@ public class Interact extends DefaultListener {
         Material m = itm.getType();
         if (kit.kits.get(p.getUniqueId()) != null) {
             Kit k = kit.kits.get(p.getUniqueId());
-            if(k instanceof Grandpa) {
-                Grandpa ga = (Grandpa) k;
+            if(k instanceof Grandpa ga) {
                 if(m == Material.PRISMARINE_SHARD)
                     ga.shootGun();
                 else if(m == Material.HONEY_BOTTLE)
@@ -133,8 +129,7 @@ public class Interact extends DefaultListener {
                 else if(m == Material.PRISMARINE_CRYSTALS)
                     ga.shootPepper();
             }
-            if (k instanceof Snowballer) {
-                Snowballer snowball = (Snowballer) k;
+            if (k instanceof Snowballer snowball) {
                 if (m == Material.GOLDEN_HOE)
                     snowball.launch();
                 else if (m == Material.WOODEN_SWORD)
@@ -147,8 +142,7 @@ public class Interact extends DefaultListener {
                     event.setCancelled(true);
                 }
             }
-            if(k instanceof Grandma) {
-                Grandma g = (Grandma) k;
+            if(k instanceof Grandma g) {
                 if(m == Material.COOKIE)
                     g.heart();
                 if(m == Material.MINECART)
@@ -157,9 +151,10 @@ public class Interact extends DefaultListener {
                     g.scooterExplode();
                 if(m == Material.FEATHER)
                     g.scooterJump();
+                if (m == Material.LEATHER_HORSE_ARMOR)
+                    g.scooterHonk();
             }
-            if(k instanceof Spy) {
-                Spy s = (Spy) k;
+            if(k instanceof Spy s) {
                 if(m == Material.BLAZE_ROD) {
                     s.detonate();
                 } else if (m == Material.IRON_HOE) {
@@ -170,8 +165,7 @@ public class Interact extends DefaultListener {
                     event.setCancelled(true);
                 }
             }
-            if(k instanceof Demolitionist) {
-                Demolitionist d = (Demolitionist) k;
+            if(k instanceof Demolitionist d) {
                 if(m == Material.CARROT_ON_A_STICK)
                     d.launchSheep();
                 if(m == Material.EGG) {
@@ -188,15 +182,13 @@ public class Interact extends DefaultListener {
                     }
                 }
             }
-            if(k instanceof Builder) {
-                Builder b = (Builder) k;
+            if(k instanceof Builder b) {
                 if(m == Material.DIAMOND_SHOVEL)
                     b.openMenu();
                 if (m == Material.SHEARS)
                     b.useShear();
             }
-            if(k instanceof Runner) {
-                Runner r = (Runner) k;
+            if(k instanceof Runner r) {
                 if(m == Material.STONE_SWORD)
                     r.blockRun();
                 if(m == Material.CLOCK)
@@ -206,8 +198,7 @@ public class Interact extends DefaultListener {
                 if (m == Material.FEATHER)
                     r.dash();
             }
-            if(k instanceof Tank) {
-                Tank t = (Tank) k;
+            if(k instanceof Tank t) {
                 if(m == Material.NETHERITE_SHOVEL) {
                     t.gatling();
                     event.setCancelled(true);
@@ -216,18 +207,14 @@ public class Interact extends DefaultListener {
                     t.switchGatlingOff();
                     event.setCancelled(true);
                 }
-
                 if(m == Material.FLINT)
                     t.exit();
                 if(m == Material.FLINT_AND_STEEL) {
                     t.hellfire();
                     event.setCancelled(true);
                 }
-
-
             }
-            if(k instanceof Fisherman) {
-                Fisherman f = (Fisherman) k;
+            if(k instanceof Fisherman f) {
                 if(m == Material.PUFFERFISH)
                     f.pufferfishBomb();
                 if(m == Material.COD)
@@ -238,8 +225,7 @@ public class Interact extends DefaultListener {
                     f.swap();
             }
 
-            if(k instanceof Engineer) {
-                Engineer e = (Engineer) k;
+            if(k instanceof Engineer e) {
                 if(m == Material.SMOOTH_STONE) {
                     e.destroyTurret();
                     event.setCancelled(true);
@@ -254,8 +240,7 @@ public class Interact extends DefaultListener {
 
             }
 
-            if(k instanceof Artificer) {
-                Artificer art = (Artificer) k;
+            if(k instanceof Artificer art) {
                 if (m == Material.RIB_ARMOR_TRIM_SMITHING_TEMPLATE) {
                     art.useFlamethrower();
                     event.setCancelled(true);
@@ -290,17 +275,36 @@ public class Interact extends DefaultListener {
                 }
             }
 
-
-
+            if (k instanceof Operator o) {
+                if (m == Material.NETHERITE_HOE) {
+                    o.useBovineStrike();
+                    event.setCancelled(true);
+                }
+                if (o.holdingPowerTerracotta()) {
+                    o.useBovineStrike();
+                    event.setCancelled(true);
+                }
+                if (m == Material.HOPPER) {
+                    o.sendDislocatorBeam();
+                    event.setCancelled(true);
+                }
+                if (m == Material.ECHO_SHARD) {
+                    o.sendSpreaderCapsule();
+                    event.setCancelled(true);
+                }
+            }
         }
     }
 
     @EventHandler
     public void itemSwitch(PlayerItemHeldEvent event) {
         Player p = event.getPlayer();
-        if(kit.kits.get(p.getUniqueId()) != null && kit.kits.get(p.getUniqueId()) instanceof Archer) {
-            Archer a = (Archer) kit.kits.get(p.getUniqueId());
+        Kit k = kit.kits.get(p.getUniqueId());
+        if(k instanceof Archer a) {
             a.handleItemSwitch(event);
+        }
+        if (k instanceof Operator o) {
+            o.hotbarSwitch(event);
         }
     }
 

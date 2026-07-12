@@ -3,7 +3,6 @@ package org.macl.ctc.kits;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
-import org.bukkit.Color;
 import org.bukkit.block.Block;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
@@ -180,12 +179,12 @@ public class Runner extends Kit {
                         es.add(e);
                         Projectile projectile = (Projectile) e;
                         if(!(projectile instanceof FishHook || projectile instanceof FishingHook)) {
-                            projectile.setBounce(true);
+//                            projectile.setBounce(true);
                             projectile.setShooter(null);
                         }
                         if(!proj.contains(projectile)) {
                             Vector v = e.getVelocity();
-                            v.multiply(-0.67f);
+                            v.multiply(-1f);
                             v.setY(Math.abs(v.getY()));
                             projectile.setVelocity(v);
                         }
@@ -196,7 +195,7 @@ public class Runner extends Kit {
                     damaged = false;
                     // Handle all other entities (players, mobs, etc.)
 
-                    p.getWorld().playSound(p.getLocation(),Sound.ENTITY_WIND_CHARGE_WIND_BURST,0.8f,0.85f);
+                    p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,0.8f,0.85f);
                     p.getWorld().playSound(p.getLocation(),Sound.BLOCK_GLASS_BREAK,1.2f,1.5f);
 
                     p.getWorld().spawnParticle(Particle.GUST,p.getLocation().add(0,1,0),3,null);
@@ -333,7 +332,7 @@ public class Runner extends Kit {
 
         double boost = 1.1;
 
-        if (p.isOnGround()) {
+        if (isOnGround()) {
             boost = 1.75;
         }
 
@@ -348,7 +347,7 @@ public class Runner extends Kit {
         p.getWorld().playSound(p.getLocation(),Sound.ENTITY_HORSE_BREATHE,1.8f,0.5f);
         p.getWorld().playSound(p.getLocation(),Sound.ENTITY_HORSE_BREATHE,1.8f,1.25f);
         p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_SHOOT,1.8f,0.65f);
-        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_WIND_CHARGE_WIND_BURST,1.8f,0.65f);
+        p.getWorld().playSound(p.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,1.8f,0.65f);
 
         p.getWorld().spawnParticle(Particle.GUST,p.getLocation().add(0,1,0),3,null);
 
@@ -380,7 +379,7 @@ public class Runner extends Kit {
                         && dashThrough.add(target.getUniqueId())) {
 
                     p.getWorld().playSound(target.getLocation(),Sound.ENTITY_BREEZE_SHOOT,1.0f,0.85f);
-                    p.getWorld().playSound(target.getLocation(),Sound.ENTITY_WIND_CHARGE_WIND_BURST,1.0f,0.85f);
+                    p.getWorld().playSound(target.getLocation(),Sound.ENTITY_BREEZE_WIND_BURST,1.0f,0.85f);
 
                     p.getWorld().spawnParticle(Particle.GUST,target.getLocation().add(0,0,0),1,null);
 

@@ -2,7 +2,6 @@ package org.macl.ctc.kits;
 
 import com.zaxxer.hikari.util.FastList;
 import org.bukkit.*;
-import org.bukkit.Color;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.enchantments.Enchantment;
@@ -16,7 +15,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.PotionMeta;
-import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
@@ -28,10 +26,8 @@ import org.macl.ctc.Main;
 import org.macl.ctc.kits.Kit;
 import org.macl.ctc.kits.KitType;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Random;
+import javax.annotation.Nullable;
+import java.util.*;
 
 public class Archer extends Kit {
     public void shoot(ProjectileLaunchEvent event) {
@@ -63,7 +59,7 @@ public class Archer extends Kit {
                 a.removeCustomEffect(p.getType());
             }
             a.setCustomName(arrowTypeToName(curArrow));
-           a.setColor(getArrowPotionType(curArrow).getPotionEffects().get(0).getType().getColor());
+            a.setColor(getArrowPotionType(curArrow).getPotionEffects().get(0).getType().getColor());
         }
 
         if(inHand == ArrowType.CYCLONE) {
@@ -116,6 +112,64 @@ public class Archer extends Kit {
         }
     }
 
+    public void teleport(Location hitLoc,Entity hitEntity) {
+        Particle.DustOptions d = new Particle.DustOptions(Color.fromRGB(136, 255, 136), 1.5F);
+        if (hitEntity != null) {
+//                    main.broadcast("teleport");
+            if (hitEntity instanceof Player pe) { // hit a player
+                Location targetLoc = hitEntity.getLocation();
+                Location shooterLoc = p.getLocation();
+
+                Collection<Entity> nearbyEntities = targetLoc.getWorld().getNearbyEntities(targetLoc, 3, 3, 3);
+
+                targetLoc.getWorld().playSound(targetLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                targetLoc.getWorld().playSound(shooterLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                Location pLoc = p.getLocation();
+                for(Entity e : nearbyEntities) {
+                    if(e.equals(p)) continue;
+                    if(e instanceof Player)
+                        ((Player) e).addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*3, 1));
+                    e.teleport(shooterLoc);
+                    createParticleLine(p,pLoc.clone().add(0,1,0),hitLoc.clone().add(0,1,0),d,4.0,0.2);
+                }
+
+                p.teleport(targetLoc);
+//                        main.broadcast("teleport - direct hit super swap!");
+
+            } else { // did not hit a player (block, snowman, etc)
+                Location pLoc = p.getLocation();
+                hitEntity.teleport(pLoc);
+                p.teleport(hitLoc);
+                createParticleLine(p,pLoc.clone().add(0,1,0),hitLoc.clone().add(0,1,0),d,4.0,0.2);
+                p.getWorld().playSound(hitLoc,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
+                p.getWorld().playSound(pLoc,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
+            }
+        } else { //hit a block
+            Entity nearestPlayer = null;
+            double nearestDist = 0.85; // Max distance to check (shorter range)
+
+            for(Entity e : hitLoc.getWorld().getNearbyEntities(hitLoc, 2, 2, 2)) {
+                if(e instanceof Player && !e.equals(p)) {
+                    double dist = e.getLocation().distance(hitLoc);
+                    if(dist < nearestDist) {
+                        nearestDist = dist;
+                        nearestPlayer = e;
+                    }
+                }
+            }
+
+            if(nearestPlayer != null) {
+                Location targetLoc = nearestPlayer.getLocation();
+                Location shooterLoc = p.getLocation();
+                targetLoc.getWorld().playSound(targetLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                shooterLoc.getWorld().playSound(shooterLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                createParticleLine(p,shooterLoc.clone().add(0,1,0),hitLoc.clone().add(0,1,0),d,4.0,0.2);
+                nearestPlayer.teleport(shooterLoc);
+                p.teleport(targetLoc);
+            }
+        }
+    }
+
     public void gravity(Location loc) {
         World world = loc.getWorld();
 
@@ -140,10 +194,12 @@ public class Archer extends Kit {
                     Material blockType = block.getType();
                     if (!blockType.isAir() && blockType.isSolid() && !main.restricted.contains(block.getType())) {
 
-                        Location blockLocation = block.getLocation();
+                        Location blockLocation = block.getLocation().add(0.5,0.5,0.5);
 
                         // Convert the block to a falling block
-                        FallingBlock fallingBlock = world.spawnFallingBlock(blockLocation, block.getBlockData());
+//                        FallingBlock fallingBlock = world.spawnFallingBlock(blockLocation, block.getBlockData());
+                        FallingBlock fallingBlock = world.spawn(blockLocation,FallingBlock.class);
+                        fallingBlock.setBlockData(block.getBlockData());
                         fallingBlock.setDropItem(false); // Prevents the block from dropping as an item
                         fallingBlock.setHurtEntities(true); // Optional: Falling blocks will hurt entities they fall on
                         fallingBlock.setGravity(false);
@@ -266,17 +322,17 @@ public class Archer extends Kit {
 
         public boolean canPlaceBlock(Block b) {
 
-           return (b.getType() == Material.AIR || !b.getType().isSolid()) && !main.restricted.contains(b.getType());
+            return (b.getType() == Material.AIR || !b.getType().isSolid()) && !main.restricted.contains(b.getType());
         }
 
     }
 
-    public static void createParticleLine(
+    public static <T> void createParticleLine(
             Player pl,
             Location loc1, Location loc2,
-            Particle.DustOptions dust,
-            double density,
-            double spread) {
+            Particle particle,
+            @Nullable T data,
+            double density, double spread) {
         Vector vecLine = (loc1.clone().toVector().subtract(loc2.clone().toVector()));
         int count;
 
@@ -284,17 +340,28 @@ public class Archer extends Kit {
 
         for (int i = 0; i < count;i++) {
             pl.getWorld().spawnParticle(
-                    Particle.DUST,
+                    particle,
                     loc2.clone().add(vecLine.clone().multiply(Math.random())),
                     1,
                     spread, spread, spread,
                     0.02,
-                    dust,
+                    data,
                     true
 
             );
         }
     }
+
+    public static void createParticleLine(
+            Player pl,
+            Location loc1, Location loc2,
+            Particle.DustOptions dust,
+            double density, double spread) {
+
+        createParticleLine(pl,loc1,loc2,Particle.DUST,dust,density,spread);
+
+    }
+
 
     static public ArrayList<Location> sphere(Location location, int radius, boolean hollow) {
         ArrayList<Location> blocks = new ArrayList<Location>();
@@ -588,7 +655,7 @@ public class Archer extends Kit {
         arrowName = event.getEntity().getName();
         arrowName = ChatColor.stripColor(arrowName);
 
-        if(arrowName.toLowerCase() == "flame")
+        if(arrowName.toLowerCase().equals("flame"))
             return;
 
         if (event.getHitBlock() != null) hitLocation = event.getHitBlock().getLocation();
@@ -602,36 +669,22 @@ public class Archer extends Kit {
                 hitLocation.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,hitLocation.add(0,1,0),60,0.5,1,0.5,0.3);
                 hitLocation.getWorld().spawnParticle(Particle.FIREWORK,hitLocation.add(0,1,0),30,0.5,1,0.5,0.3);
                 hitLocation.getWorld().spawnParticle(Particle.CLOUD,hitLocation.add(0,1,0),10,0.5,1,0.5,0);
-                hitLocation.getWorld().spawnParticle(Particle.FLASH,hitLocation.add(0,1,0),1,Color.WHITE);
-                break;
+                hitLocation.getWorld().spawnParticle(Particle.FLASH,hitLocation.add(0,1,0),1);
             }
             case "ice" -> {
                 iceTimer i = new iceTimer(hitLocation);
                 currentIce = i;
                 BukkitTask t = i.runTaskTimer(main, 0L, 1L);
                 registerTask(t);
-                break;
             }
             case "gravity" -> {
                 gravity(hitLocation);
-                break;
             }
             case "cyclone" -> {
                 main.broadcast("cyclone");
-                break;
             }
             case "teleport" -> {
-                if (event.getHitEntity() != null) {
-                    Location pLoc = p.getLocation();
-                    event.getHitEntity().teleport(pLoc);
-                    p.teleport(hitLocation);
-                    Particle.DustOptions d = new Particle.DustOptions(Color.fromRGB(136, 255, 136), 1.5F);
-                    createParticleLine(p,pLoc.add(0,1,0),hitLocation.add(0,1,0),d,4.0,0.2);
-                    p.getWorld().playSound(hitLocation,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
-                    p.getWorld().playSound(pLoc,Sound.ENTITY_PLAYER_TELEPORT,2.0f,0.9f);
-                    main.broadcast("teleport");
-                    break;
-                }
+                teleport(hitLocation,event.getHitEntity());
             }
         }
     }

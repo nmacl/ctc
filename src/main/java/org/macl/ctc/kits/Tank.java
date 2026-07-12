@@ -420,6 +420,8 @@ public class Tank extends Kit {
                         addIgnoreBlock(pe.getLocation().add(0,1.5,0));
                     }
                 }
+            }
+            for (Entity e : wallLoc.getWorld().getNearbyEntities(wallLoc,wallX + 1,wallY,wallZ + 1)) {
                 if (e instanceof Projectile pj && pj.getShooter() instanceof Player pe) {
                     if (m.game.sameTeam(pe.getUniqueId(),p.getUniqueId())) {
                         addIgnoreBlock(pj.getLocation());
@@ -518,6 +520,7 @@ public class Tank extends Kit {
 
     public class hellfireProcess extends BukkitRunnable{
         int ticks = 0;
+        int ascendTicksLeft = 40;
         Location prevLoc;
 
         public hellfireProcess(Location prevLoc) {
@@ -534,12 +537,15 @@ public class Tank extends Kit {
                 }
             }
             p.setGliding(true);
-            if (ticks > 20 * 14 || (p.getFallDistance() == 0 && ticks > 30)) {
+
+            if (getRealVelocity().getY() > 0) ascendTicksLeft--;
+
+            if (ticks > 20 * 14 || (isOnGround()) || (ascendTicksLeft <= 0 && ticks > 30)) {
                 explode();
             } else {
 
-                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10,0,0,0,0.3);
-                p.getWorld().spawnParticle(Particle.LARGE_SMOKE, p.getLocation(), 3,0.2,0.2,0.2,0.05);
+                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 10,0,0,0,0.3,null,true);
+                p.getWorld().spawnParticle(Particle.LARGE_SMOKE, p.getLocation(), 3,0.2,0.2,0.2,0.05,null,true);
 //                p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 1,0.2,0.2,0.2,0.05);
                 p.setVelocity(p.getLocation().getDirection().multiply(1.75));
                 p.getWorld().playSound(p.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_SHOOT, 5f, 0.5f);
@@ -614,9 +620,9 @@ public class Tank extends Kit {
             }
         }
 
-        p.getWorld().spawnParticle(Particle.FLAME,hitLoc,30,2,2,2,0.4);
-        p.getWorld().spawnParticle(Particle.LARGE_SMOKE,hitLoc,10,2,2,2,0.2);
-        p.getWorld().spawnParticle(Particle.LAVA,hitLoc,20,2,2,2,0.3);
+        p.getWorld().spawnParticle(Particle.FLAME,hitLoc,30,2,2,2,0.4,null,true);
+        p.getWorld().spawnParticle(Particle.LARGE_SMOKE,hitLoc,10,2,2,2,0.2,null,true);
+        p.getWorld().spawnParticle(Particle.LAVA,hitLoc,20,2,2,2,0.3,null,true);
 
         p.getWorld().playSound(hitLoc,Sound.ENTITY_BLAZE_HURT,3.0f,1.2f);
         p.getWorld().playSound(hitLoc,Sound.ENTITY_BLAZE_SHOOT,3.0f,0.8f);

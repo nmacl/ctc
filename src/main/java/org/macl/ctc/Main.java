@@ -51,7 +51,8 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
     public StatsManager stats;
     private DatabaseManager db;
     private HologramManager hologramManager;
-    private File statsFile;  // Store stats file path for Docker volume support
+    private File statsFile;
+    private File debugFile;// Store stats file path for Docker volume support
     public String prefix = ChatColor.GOLD + "[CTC] " + ChatColor.GRAY;
 
     public void send(Player p, String text, ChatColor color) {
@@ -137,14 +138,53 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         registerEvents();
         getCommand("stats").setExecutor(new org.macl.ctc.commands.StatsCommand(this));
 
+        String debugPath = System.getenv("CTC_DEBUG_FILE");
+
+        if (debugPath != null && !debugPath.isEmpty()) {
+            debugFile = new File(debugPath);
+            getLogger().info("Using debug file from environment: " + debugPath);
+
+            // Ensure parent directories exist
+            File parentDir = debugFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                if (parentDir.mkdirs()) {
+                    getLogger().info("Created debug directory: " + parentDir.getAbsolutePath());
+                }
+            }
+        } else {
+            // Fallback to plugin data folder
+            debugFile = new File(getDataFolder(), "debug.yml");
+            getLogger().info("Using default debug file: " + debugFile.getAbsolutePath());
+        }
+
+        // 3) Create debug.yml if it doesn't exist
+        if (!debugFile.exists()) {
+            try (PrintWriter out = new PrintWriter(debugFile)) {
+                out.println("debug: 0");                // minimal valid YAML
+                getLogger().info("Created new debug file");
+            } catch (IOException e) {
+                getLogger().severe("Could not create debug.yml: " + e.getMessage());
+            }
+        }
+
+        // 4) Now safely load it, get copied, @macl
+        FileConfiguration debugCfg = YamlConfiguration.loadConfiguration(debugFile);
+
+        boolean startsGame = true;
+
+        if (debugCfg.getInt("debug") > 0) {
+            startsGame = false;
+        }
 
         // auto start game
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                game.start();
-            }
-        }.runTaskLater(this, 100L);
+        if (startsGame) {
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    game.start();
+                }
+            }.runTaskLater(this, 100L);
+        }
 
     }
 
@@ -306,6 +346,7 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
             }
         }
 
+
         // If the player (or console) uses our command correct, we can return true
         return true;
     }
@@ -320,80 +361,75 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
             boolean breaksBlocks,
             boolean damagesAllies,
             String ability,
-            float falloff
+            double falloff
     ) {
 
-        if (falloff < 0.0f) falloff = 0.0f; else if (falloff > 1.0f) falloff = 1.0f;
+        falloff = Math.clamp(falloff,0.0,1.0);
 
         Location center = l.clone().add(0, 1, 0);
         World world = center.getWorld();
 
-        float power = (maxDistance /3f);
-        if (power < 2.0) power = 2.0F;
+        float power = (maxDistance / 3f);
+        power = Math.max(power,2f);
 
         world.createExplosion(center, power + ((float) maxDamage / 20), fire, breaksBlocks);
-        world.spawnParticle(Particle.FLASH, center, 1, Color.WHITE);
-        world.spawnParticle(Particle.EXPLOSION_EMITTER, center, 3);
-        Bukkit.broadcastMessage("[DEBUG] Explosion at " + center);
+//        world.spawnParticle(Particle.FLASH,center,1,null);
+        Particle.FLASH.builder()
+                        .location(center)
+                        .count(1)
+                        .color(255,255,255)
+                        .spawn();
+
+        world.spawnParticle(Particle.GUST_EMITTER_LARGE,center,1,null);
 
         final int numberOfRays = 6;
         double[] offsets = {0, 1, 2, 3, 4, 5};
 
         for (Entity e : world.getNearbyEntities(center, maxDistance, maxDistance, maxDistance)) {
-            if (!(e instanceof Player)) continue;
-            Player target = (Player) e;
+            if (!(e instanceof Player target)) continue;
 
-            if (!damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
-                Bukkit.broadcastMessage("[DEBUG] Skipping ally: " + target.getName());
+            boolean isSelf = target.getUniqueId().equals(p.getUniqueId());
+
+            // Skip same-team only if not self (self always allowed)
+            if (!isSelf && !damagesAllies && game.sameTeam(p.getUniqueId(), target.getUniqueId())) {
                 continue;
             }
 
             double distance = center.distance(target.getLocation());
-            if (distance > maxDistance) {
-                Bukkit.broadcastMessage("[DEBUG] Out of range: " + target.getName() + " @ " + String.format("%.2f", distance));
-                continue;
-            }
+            if (distance > maxDistance) continue;
 
             int raysHit = 0;
             for (double offset : offsets) {
                 Location start = center.clone().add(0, offset, 0);
                 Vector dir = target.getLocation().toVector().subtract(start.toVector()).normalize();
                 RayTraceResult result = world.rayTraceBlocks(
-                        start,
-                        dir,
-                        distance,
-                        FluidCollisionMode.NEVER,
-                        true
+                        start, dir, distance, FluidCollisionMode.NEVER, true
                 );
-                if (result == null) {
-                    raysHit++;
-                }
+                if (result == null) raysHit++;
             }
 
-            Bukkit.broadcastMessage("[DEBUG] Rays hit on " + target.getName() + ": " + raysHit + "/" + numberOfRays);
-            if (raysHit == 0) {
-                Bukkit.broadcastMessage("[DEBUG] " + target.getName() + " is fully protected by obstacles.");
-                continue;
-            }
+            if (raysHit == 0) continue;
 
             double calcFalloff = ((1 - ((distance / maxDistance) * falloff) ));
-
-            if (calcFalloff < 0.0f) calcFalloff = 0.0f; else if (calcFalloff > 1.0f) calcFalloff = 1.0f;
-
+            calcFalloff = Math.clamp(calcFalloff,0.0,1.0);
             double damageFactor = (double) raysHit / numberOfRays;
             double damage = maxDamage * calcFalloff * damageFactor;
-            Bukkit.broadcastMessage("[DEBUG] Calculated damage for " + target.getName()
-                    + ": base=" + maxDamage
-                    + ", dist=" + String.format("%.2f", distance)
-                    + ", factor=" + String.format("%.2f", damageFactor)
-                    + " => damage=" + String.format("%.2f", damage)
-                    + " fallof" + String.format("%.2f",calcFalloff));
-            double newHealth = target.getHealth() - damage;
+            if (damage <= 0) continue;
 
-            combatTracker.setHealth(target, newHealth, p, ability);
+            if (isSelf) {
+                // self damage: do NOT track
+                target.setHealth(Math.max(0.0, target.getHealth() - damage));
 
+                Kit k = kit.kits.get(target.getUniqueId());
+                if (k != null) {
+                    k.procHungerDamage();
+                }
+
+            } else {
+                // tracked damage
+                combatTracker.setHealth(target, target.getHealth() - damage, p, ability);
+            }
         }
-
     }
 
     public void fakeExplode(

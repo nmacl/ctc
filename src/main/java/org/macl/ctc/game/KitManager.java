@@ -1,9 +1,6 @@
 package org.macl.ctc.game;
 
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
-import org.bukkit.Sound;
+import org.bukkit.*;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -14,13 +11,13 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.macl.ctc.Main;
 import org.macl.ctc.events.DefaultListener;
 import org.macl.ctc.kits.*;
-import org.w3c.dom.ranges.Range;
 
 import java.util.*;
 
@@ -111,7 +108,7 @@ public class KitManager implements Listener {
                 ChatColor.BLUE + "Teleporters"
         );
 
-       menu.setItem(getSlot(), ChatColor.DARK_GRAY + "ENGINEER", Enchantment.EFFICIENCY, engineerLore, Material.DISPENSER);
+        menu.setItem(getSlot(), ChatColor.DARK_GRAY + "ENGINEER", Enchantment.EFFICIENCY, engineerLore, Material.DISPENSER);
 
         List<String> grandpaLore = Arrays.asList(
                 ChatColor.GOLD + "Booze",
@@ -150,9 +147,10 @@ public class KitManager implements Listener {
         menu.setItem(getSlot(), ChatColor.GOLD + "LUMBERJACK", Enchantment.EFFICIENCY, lumberjackLore, Material.GOLDEN_AXE);
 
         List<String> operatorLore = Arrays.asList(
-                ChatColor.BLUE + "Dislocator Beam",
-                ChatColor.DARK_AQUA + "Spreader Capsules",
-                ChatColor.AQUA + "Force Recall"
+                ChatColor.RED + "L0-27 Bovine Strike",
+                ChatColor.DARK_AQUA + "Spreaders",
+                ChatColor.WHITE + "Puller",
+                ChatColor.AQUA + "Dislocator"
         );
 
         menu.setItem(getSlot(), ChatColor.BLUE + "OPERATOR", Enchantment.KNOCKBACK, operatorLore, Material.ECHO_SHARD);
@@ -162,6 +160,7 @@ public class KitManager implements Listener {
         }
 
         menu.setItem(26+9,ChatColor.AQUA + "Info Menu",Material.BOOK);
+
 
         slot = 0;
 
@@ -176,6 +175,8 @@ public class KitManager implements Listener {
     public static List<String> createLore(String... lines) {
         return Arrays.asList(lines);
     }
+
+
 
     @EventHandler
     public void close(InventoryCloseEvent event) {
@@ -194,8 +195,7 @@ public class KitManager implements Listener {
 
     @EventHandler
     public void dropItem(PlayerDropItemEvent event) {
-        if(main.game.started)
-            event.setCancelled(true);
+        event.setCancelled(true);
     }
 
     @EventHandler
@@ -257,6 +257,9 @@ public class KitManager implements Listener {
                 case GOLDEN_AXE:
                     kits.put(p.getUniqueId(), new Lumberjack(main,p,KitType.LUMBERJACK));
                     break;
+                case ECHO_SHARD:
+                    kits.put(p.getUniqueId(),new Operator(main,p,KitType.OPERATOR));
+                    break;
                 default:
                     break;
             }
@@ -289,47 +292,6 @@ public class KitManager implements Listener {
                 p.closeInventory();
             }
         }
-        /*if(getMain().getGames().getState() == GameState.STARTED)
-            event.setCancelled(true);
-        if(click == null)
-            return;
-        if(view.getTitle().equalsIgnoreCase(getMain().getPrefix() + "Kit Menu")) {
-            if(kitHas(p)) {
-                p.closeInventory();
-                event.setCancelled(true);
-                return;
-            }
-            switch(click.getType()) {
-                case SNOWBALL:
-                    Snowballer b = new Snowballer(getMain(), p);
-                    snowballers.add(b);
-                    Bukkit.broadcastMessage("snowball");
-                    break;
-                case STICK:
-                    Grandma g = new Grandma(getMain(), p);
-                    grandmas.add(g);
-                    Bukkit.broadcastMessage("grandma");
-                    break;
-                case TNT:
-                    Demolitionist demo = new Demolitionist(getMain(), p);
-                    demos.add(demo);
-                    break;
-                case GRASS_BLOCK:
-                    Builder build = new Builder(getMain(), p);
-                    builders.add(build);
-                    break;
-                case IRON_HOE:
-                    Spy spy = new Spy(getMain(), p);
-                    spies.add(spy);
-                    break;
-                default:
-                    event.setCancelled(true);
-                    p.closeInventory();
-                    break;
-            }
-            p.closeInventory();
-            event.setCancelled(true);
-        }*/
     }
 
     public void remove(Player p) {
@@ -350,8 +312,10 @@ public class KitManager implements Listener {
             ItemMeta stmeta = st.getItemMeta();
             stmeta.setLore(lore);
             stmeta.setDisplayName(name);
+            stmeta.setEnchantmentGlintOverride(true);
+            stmeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             st.setItemMeta(stmeta);
-            st.addUnsafeEnchantment(enchantment, 1);
+//            st.addUnsafeEnchantment(enchantment, 1);
             e.setItem(slot, st);
         }
 
@@ -362,6 +326,7 @@ public class KitManager implements Listener {
             st.setItemMeta(stmeta);
             e.setItem(slot, st);
         }
+
 
         public Inventory getKitMenu() {
             return e;

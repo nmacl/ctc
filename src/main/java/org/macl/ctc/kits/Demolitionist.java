@@ -2,7 +2,6 @@ package org.macl.ctc.kits;
 
 import net.minecraft.world.entity.Entity;
 import org.bukkit.*;
-import org.bukkit.Color;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -33,7 +32,6 @@ public class Demolitionist extends Kit {
 
     public Demolitionist(Main main, Player p, KitType type) {
         super(main, p, type);
-        CraftPlayer craft = (CraftPlayer) p;
         PlayerInventory e = p.getInventory();
         e.addItem(newItem(Material.STONE_SHOVEL, ChatColor.MAGIC + "OEIHRIOQW"));
         e.setHelmet(newItem(Material.CHAINMAIL_HELMET, ""));
@@ -137,9 +135,6 @@ public class Demolitionist extends Kit {
         }
     }
 
-
-
-
     public class sheepLaunch extends BukkitRunnable {
         int timer = 0;
 
@@ -190,7 +185,7 @@ public class Demolitionist extends Kit {
                 sheep.setAdult();
             }
             sheep.getLocation().getWorld().playSound(sheep.getLocation(), Sound.BLOCK_NOTE_BLOCK_DIDGERIDOO, 1, (0.02f*timer));
-//            sheep.getLocation().getWorld().spawnParticle(Particle.LARGE_SMOKE,sheep.getLocation().add(0,0.8,0),2,0,0,0,0.0);
+//            sheep.getLocation().getWorld().spawnParticle(Particle.SMOKE_LARGE,sheep.getLocation().add(0,0.8,0),2,0,0,0,0.0);
             if(timer == 80)
                 sheep.setColor(DyeColor.BLACK);
             if(timer == 100) {

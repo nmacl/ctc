@@ -1,7 +1,7 @@
 package org.macl.ctc.events;
 
+import com.destroystokyo.paper.event.entity.ThrownEggHatchEvent;
 import net.minecraft.world.entity.animal.SnowGolem;
-import net.minecraft.world.entity.projectile.ThrownExperienceBottle;
 import net.minecraft.world.item.alchemy.Potion;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
@@ -15,7 +15,6 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.ChunkLoadEvent;
-import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.projectiles.ProjectileSource;
@@ -44,42 +43,102 @@ public class Players extends DefaultListener {
     @EventHandler
     public void playerJoinReal(PlayerJoinEvent event) {
         Player p = event.getPlayer();
-        game.resetPlayer(p, false);
-        if(main.game.started)
-            game.addTeam(p);
 
-        // then a chat message with the Discord link
-        p.sendMessage(ChatColor.AQUA + "Join our Discord: https://discord.gg/Qeme8MUXBY");
+        // Load stats from DB into cache (async, non-blocking)
+        main.getStats().loadPlayer(p.getUniqueId()).thenRun(() -> {
+            // Schedule back to main thread
+            Bukkit.getScheduler().runTask(main, () -> {
+                game.resetPlayer(p, false);
+                game.addTeam(p);
+                p.sendMessage(ChatColor.AQUA + "Join our Discord: https://discord.gg/Qeme8MUXBY");
+            });
+        });
     }
 
     @EventHandler
     public void playerQuit(PlayerQuitEvent event) {
         Player p = event.getPlayer();
-        main.broadcast("quit event " + game.resetPlayer(p, true));
+
+        // Save stats to DB before they leave
+        main.getStats().savePlayer(p.getUniqueId()).thenRun(() -> {
+            boolean wasOnTeam = game.resetPlayer(p, true);
+            main.broadcast("quit event " + wasOnTeam);
+            // Remove from cache after save
+            main.getStats().removeFromCache(p.getUniqueId());
+
+            // Check if we should end the game due to low player count
+            // Schedule this check for next tick to ensure player is fully removed
+            Bukkit.getScheduler().runTask(main, () -> {
+                if (game.started) {
+                    int remainingPlayers = Bukkit.getOnlinePlayers().size();
+
+                    if (remainingPlayers < 2) {
+                        main.broadcast(ChatColor.YELLOW + "Not enough players to continue! Game ending...");
+
+                        // End the game - no winner, just restart
+                        game.started = false;
+                        game.starting = false;
+
+                        // Save remaining player stats
+                        for (Player online : Bukkit.getOnlinePlayers()) {
+                            main.getStats().savePlayer(online.getUniqueId());
+                        }
+
+                        // Restart server
+                        new BukkitRunnable() {
+                            @Override
+                            public void run() {
+                                main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                                main.broadcast("Server restarting due to insufficient players...", ChatColor.YELLOW);
+                                main.broadcast(ChatColor.GOLD + "=========================", ChatColor.GOLD);
+                            }
+                        }.runTaskLater(main, 60L);
+
+                        new BukkitRunnable() {
+                            @Override
+                            public void run() {
+                                Bukkit.shutdown();
+                            }
+                        }.runTaskLater(main, 100L);
+                    }
+                }
+            });
+        });
     }
 
 
     @EventHandler
     public void launch(ProjectileLaunchEvent event) {
         Projectile proj = event.getEntity();
-        if(proj instanceof EnderPearl e && proj.getShooter() instanceof Player) {
-            e.addPassenger((Player) proj.getShooter());
-        }
 
-//        main.broadcast("" + event.getEntity());
+        if(proj instanceof EnderPearl e && proj.getShooter() instanceof Player p) {
+            e.addPassenger(p);
+        }
 
         if(proj instanceof ThrownExpBottle && proj.getShooter() instanceof Player) {
             Vector eyeDir = ((Player) proj.getShooter()).getEyeLocation().getDirection();
             proj.setVelocity(eyeDir.multiply(2.75));
         }
 
-        if(proj instanceof Arrow && proj.getShooter() instanceof Player) {
-            Player p = (Player) proj.getShooter();
-            if(kit.kits.get(p.getUniqueId()) instanceof Archer) {
-                Archer a = (Archer) kit.kits.get(p.getUniqueId());
+        if (proj instanceof Snowball s && proj.getShooter() instanceof Player p) {
+            if(kit.kits.get(p.getUniqueId()) instanceof Operator o) {
+                Vector eyeDir = ((Player) proj.getShooter()).getEyeLocation().getDirection();
+                proj.setVelocity(eyeDir.multiply(1.25));
+                o.throwPuller(s);
+            }
+        }
+
+        if(proj instanceof Arrow && proj.getShooter() instanceof Player p) {
+            if(kit.kits.get(p.getUniqueId()) instanceof Archer a) {
                 a.shoot(event);
             }
         }
+    }
+
+    @EventHandler
+    public void land(PlayerTeleportEvent event) {
+        if(event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL)
+            event.setCancelled(true);
     }
 
     @EventHandler
@@ -98,32 +157,29 @@ public class Players extends DefaultListener {
     }
 
     @EventHandler
-    public void land(PlayerTeleportEvent event) {
-        if(event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL)
-            event.setCancelled(true);
-    }
+    public void onFish(PlayerFishEvent event) {
+        Player p = event.getPlayer();
+        Kit kit = main.getKits().get(p.getUniqueId());
 
-    @EventHandler
-    public void fish(PlayerFishEvent event) {
-        event.getHook().setVelocity(event.getHook().getVelocity().multiply(1.7));
-//        if(event.getCaught() instanceof Player) {
+        if (kit instanceof Fisherman) {
+            event.getHook().setVelocity(event.getHook().getVelocity().multiply(1.7));
 
-        if (event.getCaught() != null) {
-            Entity c = event.getCaught();
-            Player p = event.getPlayer();
+            if (event.getCaught() != null) {
+                Entity c = event.getCaught();
 
-            if (event.getCaught() instanceof LivingEntity e) {
-                e.addPotionEffect(new PotionEffect(PotionEffectType.UNLUCK,30,1,true,true));
-                e.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING,30,1,false,false));
+                if (event.getCaught() instanceof LivingEntity e) {
+                    e.addPotionEffect(new PotionEffect(PotionEffectType.UNLUCK, 30, 1, true, true));
+                    e.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 30, 1, false, false));
+                }
+
+                Vector velo = p.getLocation().getDirection().multiply(-3f);
+                double y = p.getLocation().distance(c.getLocation());
+                y *= 0.14;
+                velo.setY(Math.min(y, 1.8));
+                velo.setX(velo.getX() * 0.3);
+                velo.setZ(velo.getZ() * 0.3);
+                c.setVelocity(velo);
             }
-
-            Vector velo = p.getLocation().getDirection().multiply(-3f);
-            double y = p.getLocation().distance(c.getLocation());
-            y *= 0.14;
-            velo.setY(Math.min(y, 1.8));
-            velo.setX(velo.getX() * 0.3);
-            velo.setZ(velo.getZ() * 0.3);
-            c.setVelocity(velo);
         }
     }
 
@@ -177,6 +233,7 @@ public class Players extends DefaultListener {
     }
 
 
+
     @EventHandler
     public void onEggThrow(PlayerEggThrowEvent e) {
         e.setHatching(false);
@@ -210,9 +267,15 @@ public class Players extends DefaultListener {
     private Player resolveAttacker(Entity damager) {
         if (damager instanceof Player p) return p;
 
-        if (damager instanceof Firework f && f.getShooter() == null && !(Objects.equals(f.getCustomName(), ""))) {
-            return Bukkit.getPlayer(UUID.fromString(f.getName()));
+        if (damager instanceof Firework f) {
+            if (f.getShooter() == null && !(Objects.equals(f.getCustomName(), ""))){
+                return Bukkit.getPlayer(UUID.fromString(f.getName()));
+            } else {
+                return (Player) f.getShooter();
+            }
+
         }
+
 
         if (damager instanceof Projectile proj && proj.getShooter() instanceof Player shooter) {
             return shooter;
@@ -251,8 +314,6 @@ public class Players extends DefaultListener {
 
         return "";
     }
-
-
 
     @EventHandler
     public void onEntityHit(EntityDamageByEntityEvent event) {
@@ -315,27 +376,27 @@ public class Players extends DefaultListener {
         }
 
         if (event.getDamager() instanceof Snowball s) {
-            event.setDamage(1.2);
             if (s.getShooter() instanceof Player p) {
-                if(kit.kits.get(p.getUniqueId()) != null) {
-                   Kit k = kit.kits.get(p.getUniqueId());
+                if (kit.kits.get(p.getUniqueId()) != null) {
+                    event.setDamage(1.2);
+                    Kit k = kit.kits.get(p.getUniqueId());
 
-                   if (k instanceof Snowballer) {
-                       event.setDamage(1.0);
-                   }
+                    if (k instanceof Snowballer) {
+                        event.setDamage(1.0);
+                    }
 
-                   if (k instanceof Tank) {
-                       event.setDamage(1.5);
-                       if (s.getFireTicks() > 0) event.getEntity().setFireTicks(30);
-                   }
+                    if (k instanceof Tank) {
+                        event.setDamage(1.3);
+                        if (s.getFireTicks() > 0) event.getEntity().setFireTicks(30);
+                    }
 
                 }
             }
             if (s.getShooter() instanceof SnowGolem) {
-                event.setDamage(1.2);
+                event.setDamage(0.8);
             }
-
         }
+
         if (event.getDamager() instanceof Egg) {
             event.setCancelled(true);  // suppress vanilla egg “knockback damage”
             Egg egg = (Egg) event.getDamager();
@@ -371,16 +432,20 @@ public class Players extends DefaultListener {
             return;
         }
 
-        if (event.getDamager() instanceof Player p) {
-
-            if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.STICK) {
+        if (event.getDamager() instanceof Player p && main.kit.kits.get(p.getUniqueId()) instanceof Kit k) {
+            if(k instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.STICK) {
                 g.onCaneHit();
             }
-            else if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.BLAZE_ROD) {
-                g.onClassicCaneHit();
+            else if(k instanceof Grandma g && p.getInventory().getItemInMainHand().getType() == Material.BLAZE_ROD) {
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        g.onClassicCaneHit();
+                    }
+                }.runTaskLater(main, 1L);
             }
 
-            if(main.getKits().get(p.getUniqueId()) != null && main.getKits().get(p.getUniqueId()) instanceof Spy s) {
+            if (k instanceof Spy s) {
                 if (s.isHoldingShank()) {
                     s.reshank();
                 }
@@ -394,8 +459,8 @@ public class Players extends DefaultListener {
                 if(attacker.getInventory().getItemInMainHand().getType() == Material.DIAMOND_PICKAXE)
                     event.setDamage(0.5);
                 if(main.getKits().get(attacker.getUniqueId()) != null && main.getKits().get(attacker.getUniqueId()) instanceof Spy && attacker.getInventory().getItemInMainHand().getType() == Material.IRON_HOE) {
-                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*2, 0));
-                    p.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 20 * 3, 2));
+//                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20*2, 0));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 20 * 2, 2));
                 }
             }
         }
@@ -406,8 +471,9 @@ public class Players extends DefaultListener {
 
     @EventHandler
     public void pickup(EntityPickupItemEvent event) {
-        if(main.game.started)
+        if(main.game.started) {
             event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -422,11 +488,6 @@ public class Players extends DefaultListener {
         // so hacky but we ball
         // getPotionEffect returns null if they don't have that effect
         if (slowness != null && slowness.getAmplifier() > 10) {
-            // amplifier is zero‐based (0 = Slowness I, 1 = Slowness II, …)
-//            event.getPlayer().setFreezeTicks(10);
-//            main.broadcast("" + "F " + event.getFrom().toVector() + "T " + event.getTo().toVector());
-//            event.setCancelled(true);
-
             float toYaw = event.getTo().getYaw();
             float toPitch = event.getTo().getPitch();
 
@@ -442,7 +503,6 @@ public class Players extends DefaultListener {
         if (k != null) {
             k.realVelocity = (event.getTo().toVector().subtract(event.getFrom().toVector()));
         }
-
 
         if(!main.game.started)
             return;
@@ -466,8 +526,8 @@ public class Players extends DefaultListener {
     @EventHandler
     public void onHeal(EntityRegainHealthEvent event) {
         if (event.getRegainReason() == EntityRegainHealthEvent.RegainReason.MAGIC) {
-            if (event.getEntity() instanceof Player p && p.hasPotionEffect(PotionEffectType.HEALTH_BOOST)) {
-                if (p.getPotionEffect(PotionEffectType.HEALTH_BOOST).getAmplifier() == 123) {
+            if (event.getEntity() instanceof Player p && p.hasPotionEffect(PotionEffectType.INSTANT_HEALTH)) {
+                if (p.getPotionEffect(PotionEffectType.INSTANT_HEALTH).getAmplifier() == 123) {
                     event.setAmount(0.5);
                 }
             }
@@ -488,8 +548,11 @@ public class Players extends DefaultListener {
     public void onPlayerShootBow(EntityShootBowEvent event) {
         if (event.getEntity() instanceof Player p) {
             Kit k = kit.kits.get(p.getUniqueId());
-            if (k instanceof Archer) {
-                event.setConsumeItem(false);
+            if (k instanceof Archer a) {
+//                event.getConsumable().setAmount(event.getConsumable().getAmount() + 1);
+                a.setArrows();
+                a.switchToBow(a.getPlayer().getInventory().getHeldItemSlot());
+//                event.setConsumeItem(false);
             }
             if (k instanceof Engineer e) {
                 e.onFireworkConsumed(event);
@@ -497,12 +560,27 @@ public class Players extends DefaultListener {
         }
     }
 
-
+    @EventHandler
+    public void onFireworkExplode(FireworkExplodeEvent event) {
+        if (event.getEntity().getShooter() instanceof Player p) {
+            Kit k = kit.kits.get(p.getUniqueId());
+            if (k instanceof Engineer e) {
+                event.getEntity().setShooter(null);
+            }
+        }
+    }
 
     @EventHandler(ignoreCancelled = true)
     public void onItemDurabilityLoss(PlayerItemDamageEvent event) {
         // prevent *any* item from losing durability
         event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onItemPickup(EntityPickupItemEvent event) {
+        if (event.getEntity() instanceof Player p) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
@@ -517,6 +595,20 @@ public class Players extends DefaultListener {
             kitObj.cancelAllRegen();
             kitObj.cancelAllTasks();
         }
+        event.setDeathMessage(null);
+    }
+
+    @EventHandler
+    public void onArrowShoot(ProjectileLaunchEvent event) {
+        if (event.getEntity() instanceof SpectralArrow) {
+            SpectralArrow arrow = (SpectralArrow) event.getEntity();
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        }
+    }
+
+    @EventHandler
+    public void hatching(ThrownEggHatchEvent event) {
+        event.setHatching(false);
     }
 
     @EventHandler
@@ -531,16 +623,19 @@ public class Players extends DefaultListener {
         else if (main.game.blueHas(p)) teamSpawn = world.getBlue();
         else                            teamSpawn = Bukkit.getWorld("world").getSpawnLocation();
 
-        // 2) Set that as the respawn point (this happens *before* the player actually appears)
+        // 2) Calculate distance-based respawn timer
+        int respawnTime = calculateRespawnTime(p, teamSpawn);
+
+        // 3) Set that as the respawn point (this happens *before* the player actually appears)
         event.setRespawnLocation(teamSpawn);
 
-        // 3) One tick later, put them into Spectator and start the 8s countdown
+        // 4) One tick later, put them into Spectator and start the countdown
         Bukkit.getScheduler().runTaskLater(main, () -> {
             p.setGameMode(GameMode.SPECTATOR);
 
-            // 4) Countdown runnable: after 8s, back to Survival
+            // 5) Countdown runnable: after calculated time, back to Survival
             new BukkitRunnable() {
-                int timer = 8;
+                int timer = respawnTime;
                 @Override
                 public void run() {
                     if (!p.isOnline()) { cancel(); return; }
@@ -553,7 +648,7 @@ public class Players extends DefaultListener {
                         main.kit.openMenu(p);
                         cancel();
                     } else {
-                        // show a little “respawning in Xs” subtitle
+                        // show a little "respawning in Xs" subtitle
                         p.sendTitle("", ChatColor.YELLOW + "Respawning in " + (timer-1) + "s", 0, 20, 0);
                         timer--;
                     }
@@ -562,27 +657,71 @@ public class Players extends DefaultListener {
         }, 1L);
     }
 
+    /**
+     * Calculate respawn time based on horizontal distance from player's core.
+     * - Die at your core: 12s (max penalty)
+     * - Die at center/beyond: 6s (min penalty)
+     * - Linear scaling in between
+     * Note: Only considers X and Z coordinates (ignores height/Y)
+     */
+    private int calculateRespawnTime(Player p, Location teamSpawn) {
+        final int MIN_RESPAWN = 7;  // Die far from core (quick respawn)
+        final int MAX_RESPAWN = 16; // Die near core (slow respawn)
+
+        Location deathLoc = p.getLocation();
+
+        // If no center defined, use default 8s
+        if (world.center == null || world.center.isEmpty()) {
+            return 8;
+        }
+
+        Location centerLoc = world.center.get(0); // First center point
+
+        // Calculate 2D horizontal distances (ignoring Y coordinate)
+        double distanceFromCore = getHorizontalDistance(deathLoc, teamSpawn);
+        double coreToCenter = getHorizontalDistance(teamSpawn, centerLoc);
+
+        // Cap distance at center (don't reward dying beyond center)
+        if (distanceFromCore > coreToCenter) {
+            distanceFromCore = coreToCenter;
+        }
+
+        // Calculate respawn time (inverse relationship: far = short, close = long)
+        // Formula: respawnTime = MAX - (distance / maxDistance) * (MAX - MIN)
+        double ratio = distanceFromCore / coreToCenter; // 0.0 (at core) to 1.0 (at center)
+        int respawnTime = (int) Math.round(MAX_RESPAWN - (ratio * (MAX_RESPAWN - MIN_RESPAWN)));
+
+        // Clamp between min and max (safety check)
+        return Math.max(MIN_RESPAWN, Math.min(MAX_RESPAWN, respawnTime));
+    }
+
+    /**
+     * Calculate horizontal distance between two locations (ignoring Y coordinate)
+     */
+    private double getHorizontalDistance(Location loc1, Location loc2) {
+        double dx = loc1.getX() - loc2.getX();
+        double dz = loc1.getZ() - loc2.getZ();
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+
 
     @EventHandler
     public void onPlayerDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
-
+        if (event.getEntity() instanceof Player player) {
             if (event.getCause() == EntityDamageEvent.DamageCause.VOID)
                 event.setDamage(player.getHealth());
             if(event.getCause() == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION)
                 event.setDamage(0);
             if(event.getCause() == EntityDamageEvent.DamageCause.LIGHTNING)
                 event.setDamage(3);
-
             // Check if the player is wearing any armor
             if (isWearingArmor(player)
                     && event.isApplicable(EntityDamageEvent.DamageModifier.ARMOR)) {
 
                 event.setDamage(EntityDamageEvent.DamageModifier.ARMOR, 0);
             }
-            if(event.getCause() == EntityDamageEvent.DamageCause.FALL) {
 
+            if(event.getCause() == EntityDamageEvent.DamageCause.FALL) {
                 if (kit.kits.get(player.getUniqueId()) != null) {
                     Kit k = kit.kits.get(player.getUniqueId());
 
@@ -616,11 +755,8 @@ public class Players extends DefaultListener {
                         s.uninvis();
                         s.reshank();
                     }
-
                 }
-
             }
-
         }
     }
 

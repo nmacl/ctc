@@ -5,9 +5,11 @@ import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -19,7 +21,6 @@ import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,12 +28,12 @@ import java.util.UUID;
 
 public class Kit implements Listener {
     public Main main;
+    public int cooldownDisplayType;
+    public boolean displayCooldowns = true;
+    public Vector realVelocity;
     KitType type;
     Player p;
     PlayerInventory e;
-
-    public Vector realVelocity;
-    public int cooldownDisplayType = 0; //turn into enum later
 
     public Material wool = Material.WHITE_WOOL;
     private HashMap<String, Cooldown> cooldowns = new HashMap<>();
@@ -134,6 +135,7 @@ public class Kit implements Listener {
         int hungerRegainInterval = 20; //Combat period, it takes (Interval*(20 - onDamageTarget) in ticks) to leave combat after taking damage
         int currentRegainInterval = 20; // Additionally, every interval regains 0.5 HP to the player
 
+
         public void run() {
             if (getHunger() != hungerTarget) {
                 if (getHunger() < hungerTarget) {
@@ -150,7 +152,7 @@ public class Kit implements Listener {
                 if (hungerRegainBuffer > 0) {
                     hungerRegainBuffer--;
                 } else if (currentRegainInterval > 0) {
-                 currentRegainInterval--;
+                    currentRegainInterval--;
                 } else {
                     currentRegainInterval = hungerRegainInterval;
                     hungerTarget++;
@@ -207,6 +209,28 @@ public class Kit implements Listener {
     public Vector getRealVelocity() {
         Vector c = realVelocity.clone();
         return c;
+    }
+
+    public boolean isOnGround() {
+        boolean onGround = false;
+
+        ArrayList<Boolean> locBelowsSolid = new ArrayList<>();
+
+        locBelowsSolid.add(p.getLocation().add(0,-0.2,0).getBlock().isSolid());
+        for (int x = -1; x <= 1; x += 2) {
+            for (int z = -1; z <= 1; z += 2) {
+                Block block = p.getLocation().add(0.3 * x,-0.2,0.3 * z).getBlock();
+                locBelowsSolid.add(block.isCollidable());
+            }
+        }
+
+        boolean yLevel = Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)) <= 0.1;
+//        boolean fallDistZero = Math.abs((Math.floor(p.getFallDistance() * 100) / 100)) <= 0.1;
+        main.broadcast("" + Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)));
+
+        onGround = yLevel && locBelowsSolid.contains(true);
+
+        return onGround;
     }
 
     public static String getProgressIndicator(double progress,int stages,ChatColor full,ChatColor empty) {
@@ -305,8 +329,8 @@ public class Kit implements Listener {
         private boolean active;
         private int originalTime;
         private String abilityName;
-        private int timeLeft;
-        private int bufferOut = 80;// Declare timeLeft as an instance variable
+        private int timeLeft;  // Declare timeLeft as an instance variable
+        private int bufferOut = 80;
 
         public Cooldown(Kit kit, Player player, String abilityName, int seconds, Sound endSound, Runnable onComplete) {
             this.player = player;
@@ -330,7 +354,7 @@ public class Kit implements Listener {
                             bufferOut--;
                         } else {
                             this.cancel();
-                        };
+                        }
                     } else {
                         timeLeft--;  // Update timeLeft here
                     }
@@ -386,6 +410,8 @@ public class Kit implements Listener {
     }
 
     public void updateCooldowns() {
+        if (!displayCooldowns) return;
+
         StringBuilder message = new StringBuilder();
         cooldowns.forEach((ability, cooldown) -> {
             if (cooldown.isActive()) {
@@ -409,16 +435,17 @@ public class Kit implements Listener {
 
     }
 
-    class RegenItem {
+    public class RegenItem {
         private Player player;
         private BukkitTask task;
         private ItemStack item;
         private int maxAmt;
         private int slot;
         private String itemName;
-        private int originalTime;
-        private int timeLeft;
-        private boolean active;
+        public int originalTime;
+        public int timeLeft;
+        public boolean active;
+        public boolean paused;
 
         public RegenItem(Kit kit, Player player, String itemName, ItemStack item, int seconds, int maxAmt, int slot) {
             this.player = player;
@@ -429,6 +456,7 @@ public class Kit implements Listener {
             this.originalTime = seconds * 20;
             this.timeLeft = seconds * 20;
             this.active = true;
+            this.paused = false;
 
             task = new BukkitRunnable() {
                 public void run() {
@@ -437,6 +465,8 @@ public class Kit implements Listener {
                         return;
                     }
 
+                    if (paused) return;
+
                     int itemCount = getCurrentItemCount();
 
                     // Check if the item count is below maximum allowed
@@ -444,7 +474,7 @@ public class Kit implements Listener {
                         if (timeLeft <= 0) {
                             item.setAmount(itemCount + 1);
                             player.getInventory().setItem(slot, item);
-                            timeLeft = originalTime;
+                            timeLeft += originalTime;
                         } else {
                             timeLeft--;
                         }
@@ -458,7 +488,7 @@ public class Kit implements Listener {
             registerTask(task);
         }
 
-        private int getCurrentItemCount() {
+        public int getCurrentItemCount() {
             int itemCount = 0;
             for (ItemStack stack : player.getInventory().getContents()) {
                 if (stack != null && stack.isSimilar(item)) {

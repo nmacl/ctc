@@ -108,7 +108,7 @@ public class Builder extends Kit {
         private final Main main;
 
         private int temp = 0;
-        private int cooldown = 10*(20/4);
+        private int cooldown = 8*(20/4);
         private Location loc;
         private Player p;
         private BlockFace dir;
@@ -192,7 +192,7 @@ public class Builder extends Kit {
     public class BuildTower extends BukkitRunnable {
 
         private int temp = 30;
-        private int cooldown = 12*(20/4);
+        private int cooldown = 10*(20/4);
         private Location loc;
         private Material woolType;
         private BlockFace dir;
@@ -281,7 +281,7 @@ public class Builder extends Kit {
     public class BuildBridge extends BukkitRunnable {
 
         private int temp = 30;
-        private int cooldown = 12*(20/4);
+        private int cooldown = 10*(20/4);
         private Location loc;
         private BlockFace dir;
         private Material woolType;
@@ -369,7 +369,7 @@ public class Builder extends Kit {
         private final Main main;
 
         private int temp = 0;
-        private int cooldown = 16*(20/4);
+        private int cooldown = 12*(20/4);
         private Location loc;
         private Player p;
         private Material woolType;
@@ -425,7 +425,7 @@ public class Builder extends Kit {
     }
 
     public void createMedFire(BlockPlaceEvent event) {
-       new medFireProcess(event,main.game.redHas(p)).runTaskTimer(main,0,1L);
+        new medFireProcess(event,main.game.redHas(p)).runTaskTimer(main,0,1L);
     }
 
 
@@ -527,11 +527,11 @@ public class Builder extends Kit {
             public void run() {
                 step++;
                 for (Location l : sphere(shearLoc,step + 1)) { // this can be optimized. but not now. im lazy.
-                   if (Tag.WOOL.isTagged(l.getBlock().getBlockData().getMaterial())) {
-                       if (l.getBlock().getType() != getWoolType()) {
-                           l.getBlock().setType(getWoolType());
-                       }
-                   }
+                    if (Tag.WOOL.isTagged(l.getBlock().getBlockData().getMaterial())) {
+                        if (l.getBlock().getType() != getWoolType()) {
+                            l.getBlock().setType(getWoolType());
+                        }
+                    }
                 }
 
                 p.getWorld().playSound(shearLoc,Sound.BLOCK_NOTE_BLOCK_FLUTE,1.5f,(float)((0.1) + ((stage / 5.0) * step)));

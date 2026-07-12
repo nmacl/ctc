@@ -18,7 +18,7 @@ import java.util.Random;
 
 public class Grandpa extends Kit {
 
-    private int maxAmmo = 2;
+    private final int maxAmmo = 2;
     private int reloadTime = 3;
     private int ammo = maxAmmo;
 
@@ -75,9 +75,9 @@ public class Grandpa extends Kit {
             } else {
                 finalShotBoosted = false;
                 finalShotCanExplode = true;
-                 bullet = p.getWorld()
-                         .spawn(p.getEyeLocation().subtract(0, 0.5, 0),
-                                 Fireball.class);
+                bullet = p.getWorld()
+                        .spawn(p.getEyeLocation().subtract(0, 0.5, 0),
+                                Fireball.class);
                 p.getWorld().playSound(p.getLocation(),
                         Sound.ENTITY_BLAZE_SHOOT,
                         1f, 0.2f);
@@ -116,7 +116,7 @@ public class Grandpa extends Kit {
 
             // knockback
             double airLaunchModifier = -0.175;
-            if (!p.isOnGround()) {
+            if (!isOnGround()) {
                 airLaunchModifier = -1.25;
             }
 
@@ -259,8 +259,8 @@ public class Grandpa extends Kit {
 
 
         cancelCooldown("Peppergun");
-            pepperAmmo = maxPepperAmmo;
-            e.setItem(1, peppergun);
+        pepperAmmo = maxPepperAmmo;
+        e.setItem(1, peppergun);
 
         p.playSound(p.getLocation(),
                 Sound.ENTITY_GENERIC_DRINK,

@@ -13,16 +13,16 @@ import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.animal.SnowGolem;
 import net.minecraft.world.entity.projectile.Snowball;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Beacon;
 import org.bukkit.block.Block;
 import org.bukkit.block.EndGateway;
+import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.FallingBlock;
-import org.bukkit.entity.Firework;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.Snowman;
+import org.bukkit.entity.*;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
@@ -35,8 +35,6 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
-import org.bukkit.craftbukkit.CraftWorld;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.macl.ctc.Main;
 
 import java.util.ArrayList;
@@ -55,7 +53,7 @@ public class Engineer extends Kit {
     SnowmanTurret snowMan;
 
     ItemStack turret = newItem(Material.DISPENSER, ChatColor.BOLD  + "" + ChatColor.WHITE + "Snowman Turret");
-    ItemStack firework =  newItem(Material.FIREWORK_ROCKET,ChatColor.WHITE + "Firework", 4);
+    ItemStack firework =  newItem(Material.FIREWORK_ROCKET,ChatColor.WHITE + "Firework", 5);
     ItemStack teleporter = newItem(Material.BEACON,ChatColor.AQUA + "Teleporter",2);
     ItemStack enemyDetector = (
             main.game.redHas(p)) ?
@@ -104,21 +102,21 @@ public class Engineer extends Kit {
     }
 
     public void onFireworkConsumed(EntityShootBowEvent event) {
-//        ((Firework) event.getProjectile()).setShooter(null);
-        Vector vel = event.getProjectile().getVelocity();
-        Firework firework = event.getEntity().getWorld().spawn(event.getEntity().getLocation().add(0,1.5,0), Firework.class);
-        firework.setFireworkMeta(((Firework) event.getProjectile()).getFireworkMeta());
-        firework.setShotAtAngle(true);
-        firework.setVelocity(vel);
-        FireworkMeta f = firework.getFireworkMeta();
-        f.setPower(3);
-        firework.setLife(0);
-        firework.setMaxLife(15);
-        firework.setFireworkMeta(f);
-        event.getEntity().getWorld().playSound(event.getEntity().getLocation(),Sound.ITEM_CROSSBOW_SHOOT,0.6f,1.0f);
-        event.getProjectile().remove();
 
-        (firework).setCustomName(String.valueOf(p.getUniqueId()));
+        Firework f = (Firework) event.getProjectile();
+        f.setTicksFlown(0);
+        f.teleport(f.getLocation().add(f.getVelocity().normalize().multiply(2.8)));
+        FireworkMeta fw = f.getFireworkMeta();
+        fw.setPower(3);
+        f.setFireworkMeta(fw);
+        new BukkitRunnable(){
+            public void run() {
+                if (f.isValid()) f.detonate();
+                this.cancel();
+            }
+        }.runTaskLater(main,15);
+
+        f.setCustomName(String.valueOf(p.getUniqueId()));
 //        main.broadcast("" + ((Firework) event.getProjectile()).getShooter());
         if (e.getItemInOffHand().getAmount() == 0) {
             reloadFireworks();
@@ -126,10 +124,10 @@ public class Engineer extends Kit {
     }
 
     public void reloadFireworks() {
-        if (isOnCooldown("Reloading") || e.getItemInOffHand().getAmount() >= 4) return;
+        if (isOnCooldown("Reloading") || e.getItemInOffHand().getAmount() >= 5) return;
         e.getItemInOffHand().setAmount(0);
         p.getWorld().playSound(p.getLocation(),Sound.ITEM_ARMOR_EQUIP_LEATHER,1.0f,0.75f);
-        setCooldown("Reloading",6,Sound.ITEM_ARMOR_EQUIP_CHAIN, () -> {
+        setCooldown("Reloading",5,Sound.ITEM_ARMOR_EQUIP_CHAIN, () -> {
             e.setItemInOffHand(firework);
         });
     }
@@ -153,10 +151,8 @@ public class Engineer extends Kit {
         Location decLoc;
         boolean onRed;
 
-        ArrayList<Player> enemiesInside = new ArrayList<>();
+        HashMap<Player,Integer> enemiesInside = new HashMap<>();
         ArrayList<Player> enemiesInside2 = new ArrayList<>();
-
-        Particle.DustOptions d = new Particle.DustOptions(Color.fromRGB(200,200,200),2.0f);
 
         public DetectorProcess(Location l, World w) {
             this.onRed = main.game.redHas(p);
@@ -165,10 +161,15 @@ public class Engineer extends Kit {
         }
 
         public void run() {
+            if (main.getKits().get(p.getUniqueId()) == null) {
+                this.cancel();
+                return;
+            }
+
             checkBlock();
             checkPlayers();
 
-            for (Player e : enemiesInside) {
+            for (Player e : enemiesInside.keySet()) {
                 e.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING,3,0));
             }
 
@@ -176,27 +177,45 @@ public class Engineer extends Kit {
 
         public void checkPlayers() {
             enemiesInside2.clear();
-            for (org.bukkit.entity.Entity e: w.getNearbyEntities(decLoc,14,14,14)) {
+            for (org.bukkit.entity.Entity e: w.getNearbyEntities(decLoc,18,18,18)) {
                 if (e instanceof Player pe && !isOnSameTeam(pe)) {
                     addEnemyToList(pe);
                     enemiesInside2.add(pe);
                 }
             }
 
-            enemiesInside.removeIf(e -> !enemiesInside2.contains(e));
+            for (Player e : enemiesInside.keySet()) {
+                if (enemiesInside.get(e) > 0) {
+                    enemiesInside.put(e,enemiesInside.get(e) - 1);
+                } else {
+                    createLine(e);
+                    enemiesInside.put(e,50);
+                }
+            }
+
+            enemiesInside.keySet().removeIf(e -> !enemiesInside2.contains(e));
 
         }
 
         public void addEnemyToList(Player enemy) {
-            if (enemiesInside.contains(enemy)) return;
-            enemiesInside.add(enemy);
-            Archer.createParticleLine(enemy,decLoc,enemy.getLocation().add(0,1,0),d,3.0,0.3);
+            if (enemiesInside.containsKey(enemy)) return;
+            enemiesInside.put(enemy,65);
+            createLine(enemy);
         }
 
         public void checkBlock() {
             if (decLoc.getBlock().getType() != Material.BLUE_SHULKER_BOX && decLoc.getBlock().getType() != Material.RED_SHULKER_BOX) {
                 this.cancel();
             }
+        }
+
+        public void createLine(Player enemy) {
+            double distance = Math.min(decLoc.distance(e.getLocation()), 14);
+            int newColor = (int)(((180) * (1 - (1 - (distance / 14)))));
+            newColor = Math.clamp(newColor,0,255);
+            Particle.DustOptions d = new Particle.DustOptions(Color.fromRGB(newColor,200,newColor),2.0f);
+            enemy.playSound(decLoc,Sound.ENTITY_ALLAY_ITEM_GIVEN,1.2f,2.0f);
+            Archer.createParticleLine(enemy,decLoc,enemy.getLocation().add(0,1,0),d,3.0,0.1);
         }
 
         public void cancel() {
@@ -249,7 +268,7 @@ public class Engineer extends Kit {
         if (snowMan == null) return;
         int sec = (int)(10.0 - snowMan.getHealth());
         snowMan.remove(Entity.RemovalReason.DISCARDED);
-        setCooldown("turret",sec,Sound.BLOCK_DISPENSER_DISPENSE,() -> {
+        setCooldown("turret",3 + sec,Sound.BLOCK_DISPENSER_DISPENSE,() -> {
             e.setItem(1,turret);
         } );
         e.setItem(1,newItem(Material.STONE,ChatColor.AQUA + "Repairing Turret"));
@@ -270,7 +289,7 @@ public class Engineer extends Kit {
                     e.setItem(2,newItem(Material.IRON_INGOT,ChatColor.GREEN + "Return Teleporters"));
                 });
             }
-            registerTask(b);
+//            registerTask(b);
         }
 
     }
@@ -349,6 +368,11 @@ public class Engineer extends Kit {
         }
 
         public void run() {
+            if (main.getKits().get(p.getUniqueId()) == null) {
+                this.cancel();
+                return;
+            }
+
             if (active) {
                 handlePlayerTeleport();
             }
@@ -468,8 +492,8 @@ public class Engineer extends Kit {
             for (org.bukkit.entity.Entity e : p.getWorld().getNearbyEntities(tpLoc,0.5,0.5,0.5)) {
                 if (
                         e instanceof Player pe &&
-                        main.game.sameTeam(p.getUniqueId(),pe.getUniqueId()) &&
-                        !playerBuffer.containsKey(pe)) {
+                                main.game.sameTeam(p.getUniqueId(),pe.getUniqueId()) &&
+                                !playerBuffer.containsKey(pe)) {
 
                     Location destination = otherTeleporter.tpLoc;
                     destination.setPitch(pe.getLocation().getPitch());
@@ -493,10 +517,10 @@ public class Engineer extends Kit {
 
 
             for (Player p : playerBuffer.keySet()) {
-              playerBuffer.put(p,playerBuffer.get(p) - 1);
-              if (playerBuffer.get(p) <= 0) {
-                  playerBuffer.remove(p);
-              }
+                playerBuffer.put(p,playerBuffer.get(p) - 1);
+                if (playerBuffer.get(p) <= 0) {
+                    playerBuffer.remove(p);
+                }
             }
 
         }
@@ -513,11 +537,9 @@ public class Engineer extends Kit {
         }
 
         public void cancel() {
+            deactivate();
             super.cancel();
-            this.deactivate();
         }
-
-
     }
 
 
@@ -551,6 +573,8 @@ public class Engineer extends Kit {
 
         public Engineer engineer;
         double maxHealth = 10;
+        int fireRate = 0;
+        int maxFireRate = 0;
         ChatColor teamColor = (main.game.redHas(p)) ? ChatColor.RED : ChatColor.BLUE;
         Snowman snowMan;
 
@@ -585,19 +609,28 @@ public class Engineer extends Kit {
 
 
         public void performRangedAttack(LivingEntity entityliving, float f) {
-            Snowball entitysnowball = new Snowball(EntityType.SNOWBALL, this.level());
-            double d0 = entityliving.getEyeY() - 1.100000023841858D;
-            double d1 = entityliving.getX() - getX();
-            double d2 = d0 - entitysnowball.getY();
-            double d3 = entityliving.getZ() - getZ();
-            double d4 = Math.sqrt(d1 * d1 + d3 * d3) * 0.20000000298023224D;
-            entitysnowball.shoot(d1, d2 + d4, d3, 1.6F, 12.0F);
-            if (p != null) {
-                entitysnowball.setOwner(((CraftPlayer) p).getHandle());
-            }
-            playSound(SoundEvents.SNOW_GOLEM_SHOOT, 1.0F, 0.4F / (getRandom().nextFloat() * 0.4F + 0.8F));
+//            Snowball entitysnowball = new Snowball(EntityType.SNOWBALL,this.level());
+//            double d0 = entityliving.getEyeY() - 1.100000023841858D;
+//            double d1 = entityliving.getX() - getX();
+//            double d2 = d0 - entitysnowball.getY();
+//            double d3 = entityliving.getZ() - getZ();
+//            double d4 = Math.sqrt(d1 * d1 + d3 * d3) * 0.20000000298023224D;
 
-            this.level().addFreshEntity((Entity) entitysnowball);
+            if (fireRate > 0) {
+                fireRate--;
+                return;
+            } else {
+                fireRate = (int) Math.floor(Math.clamp(((maxHealth - snowMan.getHealth()) / 10) * 3,0,3));
+            }
+
+            Projectile s = snowMan.launchProjectile(org.bukkit.entity.Snowball.class);
+            s.setVelocity(s.getVelocity().multiply(0));
+            Vec3 tPos = entityliving.getEyePosition();
+            Vector targetPos = new Vector(tPos.x,tPos.y,tPos.z);
+            Vector eyeDir = targetPos.subtract(snowMan.getEyeLocation().toVector()).normalize();
+            eyeDir =  Grandpa.randomizeVectorAngle(eyeDir,0.25);
+            s.setVelocity(eyeDir.multiply(1.9f));
+            playSound(SoundEvents.SNOW_GOLEM_SHOOT, 1.0F, 0.4F / (getRandom().nextFloat() * 0.4F + 0.8F));
         }
 
         public void aiStep() {
@@ -635,7 +668,7 @@ public class Engineer extends Kit {
 
         public void die(DamageSource d) {
             super.die(d);
-            if (engineer != null) {
+            if (main.kit.kits.containsValue(engineer)) {
                 engineer.onTurretDeath();
             }
         }

@@ -23,6 +23,7 @@ import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.macl.ctc.Main;
 
+import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Objects;
 
@@ -45,7 +46,7 @@ public class Snowballer extends Kit {
         e.addItem(newItem(Material.WOODEN_SWORD, ChatColor.BLUE + "Snowball Launcher"));
         e.addItem(rocketJump);
         e.addItem(snowSlam);
-        e.setBoots(newItemEnchanted(Material.DIAMOND_BOOTS, "Feather Boots", Enchantment.FEATHER_FALLING, 15));
+        e.setBoots(newItemEnchanted(Material.DIAMOND_BOOTS, "Feather Boots", Enchantment.FEATHER_FALLING, 7));
         giveWool();
         giveWool();
         setHearts(16);
@@ -173,7 +174,7 @@ public class Snowballer extends Kit {
 
             p.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME,l,1,0,0,0,0);
 
-            if (p.isOnGround() && t > 5) {
+            if (isOnGround() && t > 5) {
                 this.cancel();
             }
 
@@ -188,7 +189,7 @@ public class Snowballer extends Kit {
                 p.getInventory().setItem(1, rocketJump);
             });
 
-            p.setNoDamageTicks(4);
+            p.setNoDamageTicks(8);
 
             p.getInventory().setItem(1, newItem(Material.STICK, ChatColor.GRAY + "Refueling..."));
 
@@ -201,6 +202,7 @@ public class Snowballer extends Kit {
             Firework backBlast = p.getLocation().getWorld().spawn(p.getLocation().add(l),Firework.class);
 
             FireworkMeta meta = backBlast.getFireworkMeta();
+            backBlast.setShooter(p);
             meta.setPower(5);
             meta.addEffect(FireworkEffect.builder().withColor(Color.WHITE).with(FireworkEffect.Type.BURST).build());
             backBlast.setFireworkMeta(meta);
@@ -272,7 +274,7 @@ public class Snowballer extends Kit {
         public void run() {
             if (current_hover_time <= hover_time) {
                 current_hover_time ++;
-                createRingParticles(10,1,p.getLocation().add(0,1.0,0));
+                createRingParticles(Particle.CLOUD,10,null,1,p.getLocation().add(0,1,0));
                 p.getWorld().playSound(p.getLocation(),Sound.ENTITY_HORSE_BREATHE, 0.3F,0.4f);
             } else {
                 if (!dirSnapped) {
@@ -287,19 +289,19 @@ public class Snowballer extends Kit {
                 }
 
 
-               if (isOnGround()) {
-                   snowBlock.setGravity(false);
-                   snowBlock.setCancelDrop(true);
-                   p.removePassenger(snowBlock);
+                if (isOnGround()) {
+                    snowBlock.setGravity(false);
+                    snowBlock.setCancelDrop(true);
+                    p.removePassenger(snowBlock);
 
-                   Vector downVector = p.getEyeLocation().getDirection();
+                    Vector downVector = p.getEyeLocation().getDirection();
 
-                   downVector.setY(-0.75);
+                    downVector.setY(-0.75);
 
-                   snowBlock.setVelocity(downVector.multiply(0.75f));
-                   p.getWorld().playSound(p.getLocation(),Sound.BLOCK_SNOW_BREAK, 2.0F,0.8f);
-                   p.getWorld().playSound(p.getLocation(),Sound.BLOCK_POWDER_SNOW_BREAK, 2.0F,0.8f);
-                   spawn_slam();
+                    snowBlock.setVelocity(downVector.multiply(0.75f));
+                    p.getWorld().playSound(p.getLocation(),Sound.BLOCK_SNOW_BREAK, 2.0F,0.8f);
+                    p.getWorld().playSound(p.getLocation(),Sound.BLOCK_POWDER_SNOW_BREAK, 2.0F,0.8f);
+                    spawn_slam();
                 }
             }
         }
@@ -311,7 +313,7 @@ public class Snowballer extends Kit {
         }
 
         public void spawn_slam() {
-            p.setVelocity(p.getVelocity().multiply(0.1));
+            p.setVelocity(p.getVelocity().multiply(0.01));
             double heightFallen = (initial_height - p.getLocation().getY());
             double maxHeightFall = 35.0;
             double maxDamageGain = 9.0;
@@ -331,7 +333,7 @@ public class Snowballer extends Kit {
 
             Location slamPos = p.getLocation().add(lookAtXY.multiply(2.25));
 
-            createRingParticles(80,2,slamPos);
+            createRingParticles(Particle.CLOUD,80,null,2,slamPos.clone().add(0,0.5,0));
 
             main.broadcast("" + (5.0 + damageGain));
 
@@ -361,20 +363,7 @@ public class Snowballer extends Kit {
                 }
             }.runTaskLater(main,10L);
 
-
-
             this.cancel();
-        }
-
-        public boolean isOnGround() {
-            RayTraceResult hit = p.getWorld().rayTraceBlocks(p.getLocation(), p.getLocation().add(0.0,-1.0,0.0).toVector(), 0.25);
-//            BlockIterator b = new BlockIterator(p.getWorld(),p.getLocation().toVector(),new Vector(0,-1,0),0,1);
-            if (hit != null) {
-                return !hit.getHitBlock().isEmpty();
-            } else {
-                return false;
-            }
-
         }
 
         public void snapshotDirection() {
@@ -387,17 +376,29 @@ public class Snowballer extends Kit {
             dir = downVector;
         }
 
-        public void createRingParticles(int particles, double rad, Location loc) {
-            for (int i = 0; i < particles; i++) {
 
-                double theta = Math.random() * 2 * Math.PI;
-                double x = rad * Math.cos(theta);
-                double z = rad * Math.sin(theta);
+    }
 
-                Location particleLocation = loc.clone().add(x, 0.5, z);
-                Objects.requireNonNull(loc.getWorld()).spawnParticle(Particle.CLOUD, particleLocation, 1,0,0,0,0.1);
+    public static <T> void createRingParticles(Particle particle, int count, @Nullable T data, double rad, Location loc,boolean inwards, double vel) {
+        for (int i = 0; i < count; i++) {
+
+            double theta = Math.random() * 2 * Math.PI;
+            double x = rad * Math.cos(theta);
+            double z = rad * Math.sin(theta);
+
+            Location particleLocation = loc.clone().add(x, 0.0, z);
+
+            if (!inwards) {
+                x = 0;
+                z = 0;
             }
+
+            loc.getWorld().spawnParticle(particle, particleLocation, 0,x,0,z,vel,data);
         }
+    }
+
+    public static <T> void createRingParticles(Particle particle, int count, @Nullable T data, double rad, Location loc) {
+        createRingParticles(particle,count,data,rad,loc,false,0.0);
     }
 
     private ItemStack getSword() {

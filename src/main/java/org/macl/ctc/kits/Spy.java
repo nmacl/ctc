@@ -27,7 +27,7 @@ public class Spy extends Kit {
 
     int shankProgress = 0;
 
-    int shankMaxProgress = 30;
+    int shankMaxProgress = 20;
 
     int shankLevel = 0;
 
@@ -65,7 +65,7 @@ public class Spy extends Kit {
         giveWool();
         giveWool();
         p.getInventory().remove(Material.DIRT);
-        regenItem("cloak", newItem(Material.ENDER_PEARL, ChatColor.DARK_PURPLE + "Cloak (Teleport)"), 30, 2, 2);
+        regenItem("cloak", newItem(Material.ENDER_PEARL, ChatColor.DARK_PURPLE + "Cloak"), 30, 2, 2);
         BukkitTask inv = new spyInvis().runTaskTimer(main, 0L, 1L);
         this.registerTask(inv);
         BukkitTask shank = new shankUpgrade().runTaskTimer(main,0L,1L);
@@ -87,6 +87,7 @@ public class Spy extends Kit {
 
         boolean landed = false;
 
+        int sneakTimeLeft = 50;
         int landedLifetime = 200;
         int currentLifetime = 0;
         double maxRad = 1.0;
@@ -96,6 +97,15 @@ public class Spy extends Kit {
         Location landLoc;
 
         public void run() {
+            if (p.isSneaking() && sneakTimeLeft > 0) {
+                sneakTimeLeft--;
+                if (sneakTimeLeft == 1) {
+                    if (p.hasPotionEffect(PotionEffectType.SLOW_FALLING)) {
+                        p.removePotionEffect(PotionEffectType.SLOW_FALLING);
+                    }
+                }
+            }
+
             if (isOnGround() || landed) {
                 if (!landed) {
                     landed = true;
@@ -114,11 +124,6 @@ public class Spy extends Kit {
                     }
                 }
             }
-        }
-
-        public boolean isOnGround() {
-//            return p.getLocation().subtract(0, -1, 0).getBlock().getType() != Material.AIR;
-            return p.isOnGround();
         }
 
         public void createLandingParticles() {

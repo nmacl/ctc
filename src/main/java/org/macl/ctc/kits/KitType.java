@@ -14,5 +14,8 @@ public enum KitType {
     ARCHER,
     ARTIFICER,
     LUMBERJACK,
-    OPERATOR
+    MINER,
+    OPERATOR,
+    TIMEKEEPER,
+    HARVESTER,
 }
