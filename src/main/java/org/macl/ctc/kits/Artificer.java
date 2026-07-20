@@ -94,12 +94,16 @@ public class Artificer extends Kit {
 
                 for (LivingEntity e : hitPlayers) { //then we deal damage
                     double newHealth = e.getHealth() - ((double) totalDamage / maxCount);
-                    if (e instanceof Player) main.combatTracker.setHealth((Player) e, newHealth, p, "flamethrower");
-                    else e.damage(((double) totalDamage / maxCount));
-                    e.setFireTicks(e.getFireTicks() + 10);
-                    if (e.getFireTicks() >= 60) {
-                        e.setFireTicks(60);
+                    if (e instanceof Player pe) {
+                        if (main.game.sameTeam(pe.getUniqueId(),p.getUniqueId())) continue;
+                        main.combatTracker.setHealth((Player) e, newHealth, p, "flamethrower");
                     }
+                    else e.damage(((double) totalDamage / maxCount));
+                    e.setFireTicks(40);
+//                    e.setFireTicks(e.getFireTicks() + 10);
+//                    if (e.getFireTicks() >= 60) {
+//                        e.setFireTicks(60);
+//                    }
                 }
 
                 if (!hitPlayers.isEmpty()) { // and track if any were hit for the void bomb
