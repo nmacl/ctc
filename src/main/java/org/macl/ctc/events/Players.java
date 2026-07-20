@@ -483,7 +483,7 @@ public class Players extends DefaultListener {
         // if(!main.game.started && p.getWorld().getName() == "map")
         //     p.teleport(Bukkit.getWorld("world").getSpawnLocation());
         if(event.getTo().getBlock().getType() == Material.NETHER_PORTAL)
-            game.stack(p);
+            game.connectToServer(p, "practice");
         PotionEffect slowness = p.getPotionEffect(PotionEffectType.SLOWNESS);
         // so hacky but we ball
         // getPotionEffect returns null if they don't have that effect
@@ -615,7 +615,21 @@ public class Players extends DefaultListener {
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player p = event.getPlayer();
 
-        if (!main.game.started) return;
+        if (!main.game.started) {
+            // Practice/debug mode: no match is running, so there's no team spawn or respawn
+            // timer to apply. Scatter them somewhere new in the arena and get them straight
+            // back into the action with a fresh kit - free-for-all means dying shouldn't
+            // leave you stuck kit-less or respawning in the same spot you just died.
+            event.setRespawnLocation(game.randomMapSpawn());
+            Bukkit.getScheduler().runTaskLater(main, () -> {
+                if (!p.isOnline()) return;
+                p.setGameMode(GameMode.SURVIVAL);
+                main.kit.openMenu(p);
+                game.giveLeaveItem(p);
+                main.send(p, "Use /ctc kit to select your kit!", ChatColor.AQUA);
+            }, 1L);
+            return;
+        }
 
         // 1) Determine where they should reappear after respawn:
         Location teamSpawn;

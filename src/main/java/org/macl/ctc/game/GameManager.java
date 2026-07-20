@@ -9,7 +9,10 @@ import org.bukkit.block.Block;
 import org.bukkit.boss.BossBar;
 import org.bukkit.boss.KeyedBossBar;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
@@ -46,14 +49,53 @@ public class GameManager {
     private Team red;
     private Team blue;
 
+    private final String serverName;
+
     public GameManager(Main main) {
         this.main = main;
         this.world = main.worldManager;
         this.kit = main.kit;
+        String envName = System.getenv("SERVER_NAME");
+        this.serverName = (envName == null || envName.isEmpty()) ? "unknown" : envName.toLowerCase();
         clean();
+        startStatusReporter();
+    }
+
+    /**
+     * Periodically pushes live match state (phase, clock, core health, center control)
+     * to the shared database so the lobby can show real status instead of guessing off player count.
+     */
+    private void startStatusReporter() {
+        Bukkit.getScheduler().runTaskTimer(main, () -> reportStatus(null), 20L, 60L);
+    }
+
+    private void reportStatus(String phaseOverride) {
+        String phase = phaseOverride != null ? phaseOverride
+                : started ? "IN_PROGRESS"
+                : starting ? "STARTING"
+                : "WAITING";
+
+        int redCount = getReds().size();
+        int blueCount = getBlues().size();
+
+        Bukkit.getScheduler().runTaskAsynchronously(main, () ->
+                main.getDatabase().updateServerStatus(
+                        serverName, phase, timeRemaining, redCoreHealth, blueCoreHealth,
+                        center, redCount, blueCount
+                )
+        );
     }
 
     public void addTeam(Player p) {
+        if (gameScoreboard == null) {
+            // No match has ever started on this server (e.g. debug/practice mode) - there
+            // are no teams to assign to, just give the player a kit and drop them in the map.
+            setup(p);
+            giveLeaveItem(p);
+            main.send(p, "Use /ctc kit to select your kit!", ChatColor.AQUA);
+            return;
+        }
+
         String name = p.getName();
         int redSize = getRed().getSize();
         int blueSize = getBlue().getSize();
@@ -229,6 +271,7 @@ public class GameManager {
             // Tie - just restart without winner
             started = false;
             starting = false;
+            reportStatus("RESTARTING");
             broadcastLiveGameAwards();
 
             // Save stats
@@ -262,7 +305,11 @@ public class GameManager {
     }
 
     private void setup(Player p) {
-        p.setScoreboard(gameScoreboard);
+        // gameScoreboard only exists once a real match has start()'d - in practice/debug
+        // mode there's no scoreboard to assign, and setScoreboard(null) throws.
+        if (gameScoreboard != null) {
+            p.setScoreboard(gameScoreboard);
+        }
         teleportSpawn(p);
         AttributeInstance attribute = p.getAttribute(Attribute.MAX_HEALTH);
         attribute.setBaseValue(20.0);
@@ -362,6 +409,7 @@ public class GameManager {
     public void stop(Player stopper) {
         started  = false;
         starting = false;
+        reportStatus("RESTARTING");
 
         // Cancel game timer
         if (gameTimer != null) {
@@ -831,15 +879,77 @@ public class GameManager {
     }
 
     public void teleportSpawn(Player p) {
+        if (redHas(p)) {
+            p.teleport(world.getRed());
+        } else if (blueHas(p)) {
+            p.teleport(world.getBlue());
+        } else {
+            // No team (practice/FFA mode - a real match always assigns red or blue before
+            // this runs) - scatter spawns randomly within the map's world border instead.
+            p.teleport(randomMapSpawn());
+        }
+    }
+
+    /**
+     * Picks a random, safe (on-top-of-terrain) location within the "map" world's current
+     * world border. Used for free-for-all spawns/respawns where there's no fixed team spawn.
+     * Respects whatever border size/center is already baked into that world - set one when
+     * building the map, otherwise this will scatter across the full (likely mostly empty)
+     * default border.
+     */
+    public Location randomMapSpawn() {
         World mapWorld = Bukkit.getWorld("map");
         if (mapWorld == null) {
             mapWorld = Bukkit.createWorld(new WorldCreator("map"));
         }
-        p.teleport(mapWorld.getSpawnLocation());
-        if (redHas(p))
-            p.teleport(world.getRed());
-        if (blueHas(p))
-            p.teleport(world.getBlue());
+
+        WorldBorder border = mapWorld.getWorldBorder();
+        Location center = border.getCenter();
+        double halfSize = border.getSize() / 2.0;
+        double range = Math.max(halfSize - Math.min(halfSize * 0.15, 10), 1);
+
+        Random rand = new Random();
+        double x = center.getX() + (rand.nextDouble() * 2 - 1) * range;
+        double z = center.getZ() + (rand.nextDouble() * 2 - 1) * range;
+        int y = mapWorld.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1;
+
+        return new Location(mapWorld, x, y, z);
+    }
+
+    public static final String LEAVE_ITEM_KEY = "leave_item";
+
+    /**
+     * Gives the practice-mode "LEAVE" clock in the last hotbar slot. Tagged via persistent
+     * data (not just Material.CLOCK) because Runner's kit already binds a right-click ability
+     * to a plain clock - tagging lets Interact's handler tell the two apart regardless of
+     * which kit the player has equipped.
+     */
+    public void giveLeaveItem(Player p) {
+        ItemStack clock = new ItemStack(Material.CLOCK);
+        ItemMeta meta = clock.getItemMeta();
+        meta.setDisplayName(ChatColor.RED + "" + ChatColor.BOLD + "LEAVE");
+        meta.setLore(List.of(ChatColor.GRAY + "Right-click to return to the lobby"));
+        meta.getPersistentDataContainer().set(
+                new NamespacedKey(main, LEAVE_ITEM_KEY), PersistentDataType.BYTE, (byte) 1);
+        clock.setItemMeta(meta);
+        p.getInventory().setItem(8, clock);
+    }
+
+    public boolean isLeaveItem(ItemStack item) {
+        if (item == null || item.getType() != Material.CLOCK || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer()
+                .has(new NamespacedKey(main, LEAVE_ITEM_KEY), PersistentDataType.BYTE);
+    }
+
+    public void sendToLobby(Player p) {
+        connectToServer(p, "lobby");
+    }
+
+    public void connectToServer(Player p, String serverName) {
+        com.google.common.io.ByteArrayDataOutput out = com.google.common.io.ByteStreams.newDataOutput();
+        out.writeUTF("Connect");
+        out.writeUTF(serverName);
+        p.sendPluginMessage(main, "BungeeCord", out.toByteArray());
     }
 
     /**

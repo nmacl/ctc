@@ -118,6 +118,14 @@ public class Interact extends DefaultListener {
         // No item? nothing to do
         if (itm == null || itm.getType() == Material.AIR) return;
 
+        // Practice mode's "LEAVE" clock - checked before kit abilities so it can't be
+        // shadowed by Runner's own clock-bound ability.
+        if (!game.started && game.isLeaveItem(itm)) {
+            event.setCancelled(true);
+            game.sendToLobby(p);
+            return;
+        }
+
         Material m = itm.getType();
         if (kit.kits.get(p.getUniqueId()) != null) {
             Kit k = kit.kits.get(p.getUniqueId());

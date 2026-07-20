@@ -88,12 +88,29 @@ public class DatabaseManager {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """;
 
+        String createServerStatusTable = """
+            CREATE TABLE IF NOT EXISTS server_status (
+                server_name VARCHAR(50) PRIMARY KEY,
+                phase VARCHAR(20) NOT NULL DEFAULT 'WAITING',
+                time_remaining INT NOT NULL DEFAULT 0,
+                red_core_health INT NOT NULL DEFAULT 3,
+                blue_core_health INT NOT NULL DEFAULT 3,
+                center_control TINYINT NOT NULL DEFAULT 0,
+                red_players INT NOT NULL DEFAULT 0,
+                blue_players INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """;
+
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createPlayerStatsTable);
             plugin.getLogger().info("Database table 'player_stats' ready");
 
             stmt.execute(createServerMapsTable);
             plugin.getLogger().info("Database table 'server_maps' ready");
+
+            stmt.execute(createServerStatusTable);
+            plugin.getLogger().info("Database table 'server_status' ready");
         }
     }
 
@@ -120,6 +137,41 @@ public class DatabaseManager {
             }
         } catch (SQLException e) {
             plugin.getLogger().warning("Failed to update server map in database: " + e.getMessage());
+        }
+    }
+
+    public void updateServerStatus(String serverName, String phase, int timeRemaining,
+                                    int redCoreHealth, int blueCoreHealth, int centerControl,
+                                    int redPlayers, int bluePlayers) {
+        try (Connection conn = getConnection()) {
+            String upsert = """
+                INSERT INTO server_status
+                    (server_name, phase, time_remaining, red_core_health, blue_core_health, center_control, red_players, blue_players)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    phase = ?, time_remaining = ?, red_core_health = ?, blue_core_health = ?,
+                    center_control = ?, red_players = ?, blue_players = ?, updated_at = CURRENT_TIMESTAMP
+            """;
+            try (var ps = conn.prepareStatement(upsert)) {
+                ps.setString(1, serverName.toLowerCase());
+                ps.setString(2, phase);
+                ps.setInt(3, timeRemaining);
+                ps.setInt(4, redCoreHealth);
+                ps.setInt(5, blueCoreHealth);
+                ps.setInt(6, centerControl);
+                ps.setInt(7, redPlayers);
+                ps.setInt(8, bluePlayers);
+                ps.setString(9, phase);
+                ps.setInt(10, timeRemaining);
+                ps.setInt(11, redCoreHealth);
+                ps.setInt(12, blueCoreHealth);
+                ps.setInt(13, centerControl);
+                ps.setInt(14, redPlayers);
+                ps.setInt(15, bluePlayers);
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Failed to update server status in database: " + e.getMessage());
         }
     }
 

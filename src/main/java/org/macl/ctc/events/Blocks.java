@@ -45,7 +45,10 @@ public class Blocks extends DefaultListener {
     public void blockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
         Block block = event.getBlock();
-        if(main.restricted.contains(event.getBlock().getType()) && main.game.started)
+        // Restricted blocks (netherite, obsidian, bedrock, barrier, etc.) are structural map
+        // pieces - always protected, not just mid-match. Practice mode never sets game.started,
+        // so gating this on it would leave them breakable there.
+        if(main.restricted.contains(event.getBlock().getType()))
             event.setCancelled(true);
         game.resetCenter(null);
 
@@ -173,7 +176,7 @@ public class Blocks extends DefaultListener {
 
     @EventHandler
     public void blockBurn(BlockBurnEvent event) {
-        if(main.restricted.contains(event.getBlock().getType()) && main.game.started)
+        if(main.restricted.contains(event.getBlock().getType()))
             event.setCancelled(true);
         game.resetCenter(null);
     }

@@ -84,6 +84,9 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         this.getCommand("ctc").setExecutor(this);
         getLogger().info("Started!");
 
+        // Needed so practice mode's "LEAVE" item can send players back to the lobby
+        getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
+
         HologramLib.getManager().ifPresentOrElse(
                 manager -> hologramManager = manager,
                 () -> getLogger().severe("Failed to initialize HologramLib manager.")
@@ -269,12 +272,18 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
         this.getLogger().info("[CTC DEBUG] first place head hologram: " + head);
     }
 
+    private static final Set<String> ADMIN_SUBCOMMANDS = Set.of(
+            "reset", "teleport", "start", "red", "blue", "center", "map", "tp", "holo"
+    );
+
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (sender instanceof Player) {
             Player p = (Player) sender;
-            if (!p.isOp())
-                return false;
+            if (args.length > 0 && ADMIN_SUBCOMMANDS.contains(args[0].toLowerCase()) && !p.isOp()) {
+                send(p, "You don't have permission for that.", ChatColor.RED);
+                return true;
+            }
 
             if (args[0].equalsIgnoreCase("reset")) {
                 game.stop(p);
