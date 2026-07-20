@@ -375,6 +375,14 @@ public class Players extends DefaultListener {
             }
         }
 
+        if (event.getDamager() instanceof Arrow a) {
+            if (a.getShooter() instanceof Player p) {
+                if (kit.kits.get(p.getUniqueId()) != null) {
+                    event.setDamage(event.getDamage() / 1.7);
+                }
+            }
+        }
+
         if (event.getDamager() instanceof Snowball s) {
             if (s.getShooter() instanceof Player p) {
                 if (kit.kits.get(p.getUniqueId()) != null) {
@@ -392,7 +400,12 @@ public class Players extends DefaultListener {
 
                 }
             }
-            if (s.getShooter() instanceof SnowGolem) {
+//            main.broadcast("" + s.getShooter());
+            if (s.getShooter() instanceof Snowman) {
+//                if (event.getEntity() instanceof Player pe){
+//                    if (main.game.sameTeam(t.engineer.getPlayer().getUniqueId(),pe.getUniqueId())) return;
+//                }
+//                main.broadcast("snowman hit hsot");
                 event.setDamage(0.8);
             }
         }

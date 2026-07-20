@@ -624,7 +624,9 @@ public class Engineer extends Kit {
             }
 
             Projectile s = snowMan.launchProjectile(org.bukkit.entity.Snowball.class);
+
             s.setVelocity(s.getVelocity().multiply(0));
+            s.setCustomName(p.getUniqueId().toString());
             Vec3 tPos = entityliving.getEyePosition();
             Vector targetPos = new Vector(tPos.x,tPos.y,tPos.z);
             Vector eyeDir = targetPos.subtract(snowMan.getEyeLocation().toVector()).normalize();
