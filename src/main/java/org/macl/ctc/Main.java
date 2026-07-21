@@ -304,17 +304,15 @@ public final class Main extends JavaPlugin implements CommandExecutor, Listener 
                 String Map = args[1];
                 worldManager.setCenter(p, Map);
             } else if (args[0].equalsIgnoreCase("direction")) {
-                broadcast(p.getLocation().getDirection().toString());
+                send(p, p.getLocation().getDirection().toString());
             } else if (args[0].equalsIgnoreCase("kit")) {
                 kit.openMenu(p);
             } else if (args[0].equalsIgnoreCase("map")) {
                 map = args[1];
                 worldManager.loadWorld("map", map);
-                broadcast(args[1]);
             } else if (args[0].equalsIgnoreCase("tp")) {
                 if (Bukkit.getWorld(args[1]) != null) {
                     p.teleport(Bukkit.getWorld(args[1]).getSpawnLocation());
-                    broadcast("teleport");
                 }
             } else if (args[0].equalsIgnoreCase("join")) {
                 if (args.length < 2) {

@@ -61,8 +61,7 @@ public class Players extends DefaultListener {
 
         // Save stats to DB before they leave
         main.getStats().savePlayer(p.getUniqueId()).thenRun(() -> {
-            boolean wasOnTeam = game.resetPlayer(p, true);
-            main.broadcast("quit event " + wasOnTeam);
+            game.resetPlayer(p, true);
             // Remove from cache after save
             main.getStats().removeFromCache(p.getUniqueId());
 
@@ -322,12 +321,10 @@ public class Players extends DefaultListener {
             event.setDamage(2.25);
             if(arrow.getShooter() instanceof Player) {
                 Player shooter = (Player) arrow.getShooter();
-                main.broadcast(shooter.getName());
                 if(kit.kits.get(shooter.getUniqueId()) instanceof Artificer && event.getEntity() instanceof Player) {
                     Player shot = (Player) event.getEntity();
                     Kit shooterkit = kit.kits.get(shooter.getUniqueId());
                     if (shooterkit instanceof Artificer) ((Artificer) shooterkit).addVoidFragments(4);
-                    main.broadcast(shot.getName());
                     shot.setFreezeTicks(100);
                     shot.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 12));
                     shot.sendTitle(
@@ -639,6 +636,7 @@ public class Players extends DefaultListener {
                 p.setGameMode(GameMode.SURVIVAL);
                 main.kit.openMenu(p);
                 game.giveLeaveItem(p);
+                game.giveKitClock(p);
                 main.send(p, "Use /ctc kit to select your kit!", ChatColor.AQUA);
             }, 1L);
             return;

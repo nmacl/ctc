@@ -680,9 +680,6 @@ public class Archer extends Kit {
             case "gravity" -> {
                 gravity(hitLocation);
             }
-            case "cyclone" -> {
-                main.broadcast("cyclone");
-            }
             case "teleport" -> {
                 teleport(hitLocation,event.getHitEntity());
             }

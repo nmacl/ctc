@@ -80,28 +80,10 @@ public class Tank extends Kit {
             public void run() {
 //                main.broadcast(face.toString());
 
-                if (face == BlockFace.EAST || face == BlockFace.WEST) {
-                    // z + -
-                    ironLocs.add(bLoc.clone().add(0, 1, 1));
-                    ironLocs.add(bLoc.clone().add(0, 1, -1));
-                    topSlabLocs.add(bLoc.clone().add(0, 2, -1));
-                    topSlabLocs.add(bLoc.clone().add(0, 2, 1));
-                } else if (face == BlockFace.SOUTH || face == BlockFace.NORTH) {
-                    // x + -
-                    ironLocs.add(bLoc.clone().add(1, 1, 0));
-                    ironLocs.add(bLoc.clone().add(-1, 1, 0));
-                    topSlabLocs.add(bLoc.clone().add(1, 2, 0));
-                    topSlabLocs.add(bLoc.clone().add(-1, 2, 0));
-                }
                 if (!main.restricted.contains(bLoc.clone().add(0, -1, 0).getBlock().getType())) {
                     bLoc.clone().add(0, -1, 0).getBlock().setType(Material.LIGHT_GRAY_WOOL);
                     locs.add(bLoc.clone().add(0, -1, 0));
                 }
-
-                ironLocs.add(bLoc.clone().add(-1, 0, 0));
-                ironLocs.add(bLoc.clone().add(1, 0, 0));
-                ironLocs.add(bLoc.clone().add(0, 0, 1));
-                ironLocs.add(bLoc.clone().add(0, 0, -1));
 
                 Material m = (main.game.redHas(p)) ? Material.REDSTONE_BLOCK : Material.LAPIS_BLOCK;
 
@@ -110,18 +92,15 @@ public class Tank extends Kit {
                     locs.add(bLoc.clone().add(0, 2, 0));
                 }
 
-                topSlabLocs.add(bLoc.clone().add(1, 0, 1));
-                topSlabLocs.add(bLoc.clone().add(-1, 0, 1));
-                topSlabLocs.add(bLoc.clone().add(1, 0, -1));
-                topSlabLocs.add(bLoc.clone().add(-1, 0, -1));
-                bottomSlabLocs.add(bLoc.clone().add(1, -1, 0));
-                bottomSlabLocs.add(bLoc.clone().add(1, -1, 1));
-                bottomSlabLocs.add(bLoc.clone().add(0, -1, 1));
-                bottomSlabLocs.add(bLoc.clone().add(-1, -1, 0));
-                bottomSlabLocs.add(bLoc.clone().add(-1, -1, -1));
-                bottomSlabLocs.add(bLoc.clone().add(0, -1, -1));
-                bottomSlabLocs.add(bLoc.clone().add(1, -1, -1));
-                bottomSlabLocs.add(bLoc.clone().add(-1, -1, 1));
+                // Cover only exists directly behind the player (the direction they were
+                // facing when they set up), so front and sides stay open - they can still
+                // be flanked instead of being boxed in on every side.
+                BlockFace behind = face.getOppositeFace();
+                int bx = behind.getModX();
+                int bz = behind.getModZ();
+                ironLocs.add(bLoc.clone().add(bx, 0, bz));
+                ironLocs.add(bLoc.clone().add(bx, 1, bz));
+                topSlabLocs.add(bLoc.clone().add(bx, 2, bz));
 
                 for (Location loc : ironLocs) {
                     if (main.restricted.contains(loc.getBlock().getType())) continue;

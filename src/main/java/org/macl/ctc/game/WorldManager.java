@@ -47,9 +47,9 @@ public class WorldManager {
             if (worldFolder.exists()) {
                 try {
                     FileUtils.deleteDirectory(worldFolder);
-                    main.broadcast("Deleted existing world folder: " + worldName);
+                    main.getLogger().info("Deleted existing world folder: " + worldName);
                 } catch (IOException e) {
-                    main.broadcast("Failed to delete world folder: " + worldName);
+                    main.getLogger().severe("Failed to delete world folder: " + worldName);
                     e.printStackTrace();
                     return;
                 }
@@ -57,16 +57,16 @@ public class WorldManager {
 
             // Check if the replacement folder exists
             if (!replacementFolder.exists()) {
-                main.broadcast("Replacement folder does not exist: " + replacement);
+                main.getLogger().severe("Replacement folder does not exist: " + replacement);
                 return;
             }
 
             // Copy the replacement world folder
             try {
                 FileUtils.copyDirectory(replacementFolder, worldFolder);
-                main.broadcast("Copied replacement world folder: " + replacement + " to " + worldName);
+                main.getLogger().info("Copied replacement world folder: " + replacement + " to " + worldName);
             } catch (IOException e) {
-                main.broadcast("Failed to copy replacement world: " + replacement);
+                main.getLogger().severe("Failed to copy replacement world: " + replacement);
                 e.printStackTrace();
                 return;
             }
@@ -79,7 +79,7 @@ public class WorldManager {
                     World existingWorld = Bukkit.getWorld(worldName);
                     if (existingWorld != null) {
                         Bukkit.unloadWorld(worldName, false);
-                        main.broadcast("Unloaded existing world '" + worldName + "'.");
+                        main.getLogger().info("Unloaded existing world '" + worldName + "'.");
                     }
 
                     // Wait a second for unload to complete
@@ -99,7 +99,7 @@ public class WorldManager {
                                     // Use Multiverse-Core command to import the world
                                     String command = "mv import " + worldName + " " + environment;
                                     Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-                                    main.broadcast("Imported world '" + worldName + "' using Multiverse-Core as " + environment + " world.");
+                                    main.getLogger().info("Imported world '" + worldName + "' using Multiverse-Core as " + environment + " world.");
 
                                     // Remove the world from Multiverse-Core configuration
                                     removeWorldFromMultiverseConfig(worldName);
@@ -115,13 +115,13 @@ public class WorldManager {
                                         public void run() {
                                             World importedWorld = Bukkit.getWorld(worldName);
                                             if (importedWorld != null) {
-                                                main.broadcast("World '" + worldName + "' has been successfully loaded.");
+                                                main.getLogger().info("World '" + worldName + "' has been successfully loaded.");
                                                 center = getCenter();
                                                 cancel();
                                             } else {
                                                 attempts++;
                                                 if (attempts >= 10) {
-                                                    main.broadcast("Failed to load world '" + worldName + "' after importing with Multiverse-Core.");
+                                                    main.getLogger().severe("Failed to load world '" + worldName + "' after importing with Multiverse-Core.");
                                                     cancel();
                                                 }
                                             }
@@ -140,17 +140,17 @@ public class WorldManager {
 
                     // Verify that the world was loaded
                     if (createdWorld != null) {
-                        main.broadcast("World '" + worldName + "' has been successfully loaded.");
+                        main.getLogger().info("World '" + worldName + "' has been successfully loaded.");
                         isUnloading = false;
                         center = getCenter();
                     } else {
-                        main.broadcast("Failed to load world '" + worldName + "'.");
+                        main.getLogger().severe("Failed to load world '" + worldName + "'.");
                     }
                 }
             });
         });
 
-        main.broadcast("Loading " + replacement + "...");
+        main.getLogger().info("Loading " + replacement + "...");
     }
 
     private void removeWorldFromMultiverseConfig(String worldName) {
@@ -165,13 +165,13 @@ public class WorldManager {
             // Save the configuration
             try {
                 multiverseConfig.save(multiverseConfigFile);
-                main.broadcast("Removed world '" + worldName + "' from Multiverse-Core configuration.");
+                main.getLogger().info("Removed world '" + worldName + "' from Multiverse-Core configuration.");
             } catch (IOException e) {
-                main.broadcast("Failed to remove world '" + worldName + "' from Multiverse-Core configuration.");
+                main.getLogger().severe("Failed to remove world '" + worldName + "' from Multiverse-Core configuration.");
                 e.printStackTrace();
             }
         } else {
-            main.broadcast("Multiverse-Core is not installed or not enabled.");
+            main.getLogger().severe("Multiverse-Core is not installed or not enabled.");
         }
     }
 
@@ -306,7 +306,6 @@ public class WorldManager {
     public void setRed(Player p, String s) {
 
         Location loc = p.getLocation();
-        main.send(p, p.getLocation().toString());
         main.send(p, "Red spawn set", ChatColor.RED);
 
         main.getConfig().set(s + ".red.world", "map");
@@ -322,8 +321,6 @@ public class WorldManager {
     public void setBlue(Player p, String s) {
 
         Location loc = p.getLocation();
-        main.send(p, p.getLocation().toString());
-
         main.send(p, "Blue spawn set", ChatColor.BLUE);
 
         main.getConfig().set(s + ".blue.world", "map");
@@ -339,8 +336,6 @@ public class WorldManager {
     public void setCenter(Player p, String Map) {
 
         Location loc = p.getLocation();
-        main.send(p, p.getLocation().toString());
-
         main.send(p, "Center set");
 
         main.getConfig().set(Map + ".center.world", loc.getWorld().getName());

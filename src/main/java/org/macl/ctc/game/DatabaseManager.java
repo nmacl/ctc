@@ -28,7 +28,7 @@ public class DatabaseManager {
 
         // Build JDBC connection string
         String jdbcUrl = String.format(
-            "jdbc:mysql://%s:%s/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+            "jdbc:mysql://%s:%s/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/New_York",
             host, port, database
         );
 

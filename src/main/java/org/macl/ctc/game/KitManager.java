@@ -264,10 +264,12 @@ public class KitManager implements Listener {
                     break;
             }
 
-            // Practice mode has no teams/timer, so give players a way back to the lobby -
-            // re-applied on every kit (re)pick since kits equip their own hotbar items.
+            // Practice mode has no match timer, so give players a way back to the lobby and
+            // a quick way to reopen this menu - re-applied on every kit (re)pick since kits
+            // equip their own hotbar items.
             if (!main.game.started) {
                 main.game.giveLeaveItem(p);
+                main.game.giveKitClock(p);
             }
 
             event.setCancelled(true);

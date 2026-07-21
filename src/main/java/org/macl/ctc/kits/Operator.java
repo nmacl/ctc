@@ -328,7 +328,6 @@ public class Operator extends Kit {
         public BovineStrikeMissile(Location sLoc, int power) {
             this.power = power;
             this.strikeLoc = sLoc;
-            main.broadcast("" + power);
             resolvePropertiesFromPower();
             onRed = main.game.redHas(p);
             createCow();

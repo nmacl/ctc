@@ -226,7 +226,6 @@ public class Kit implements Listener {
 
         boolean yLevel = Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)) <= 0.1;
 //        boolean fallDistZero = Math.abs((Math.floor(p.getFallDistance() * 100) / 100)) <= 0.1;
-        main.broadcast("" + Math.abs((Math.floor(getRealVelocity().getY() * 100) / 100)));
 
         onGround = yLevel && locBelowsSolid.contains(true);
 

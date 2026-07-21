@@ -335,8 +335,6 @@ public class Snowballer extends Kit {
 
             createRingParticles(Particle.CLOUD,80,null,2,slamPos.clone().add(0,0.5,0));
 
-            main.broadcast("" + (5.0 + damageGain));
-
             Collection<Entity> entities = p.getWorld().getNearbyEntities(slamPos,2,2,2);
 //            main.fakeExplode(p,slamPos,0,2,false,false,true,"snowSlam");
             p.getWorld().createExplosion(slamPos, 1f, false, false);

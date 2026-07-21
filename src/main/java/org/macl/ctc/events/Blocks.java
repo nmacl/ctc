@@ -11,9 +11,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
-import org.bukkit.event.world.WorldLoadEvent;
-import org.bukkit.event.world.WorldSaveEvent;
-import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.util.Vector;
@@ -29,16 +26,6 @@ public class Blocks extends DefaultListener {
 
     public Blocks(Main main) {
         super(main);
-    }
-
-    @EventHandler
-    public void worldSave(WorldSaveEvent event) {
-        main.broadcast("saving. this shouldn't be happening.");
-    }
-
-    @EventHandler
-    public void worldUnload(WorldUnloadEvent event) {
-        main.broadcast("unload");
     }
 
     @EventHandler

@@ -49,7 +49,18 @@ public class GameManager {
     private Team red;
     private Team blue;
 
+    // Practice servers never call start(), so gameScoreboard stays null forever there.
+    // This is a separate, longer-lived scoreboard so practice players still get balanced
+    // red/blue teams (colors, no friendly fire, stats-friendly teammate checks) without
+    // touching any of the "is a real match running" checks that key off gameScoreboard.
+    private Scoreboard practiceScoreboard;
+
     private final String serverName;
+
+    // Practice maps often don't have a border baked in (or inherit a huge default one),
+    // which used to scatter practice spawns across a mostly-empty world. Keep the
+    // practice arena small and contained instead.
+    private static final double PRACTICE_BORDER_SIZE = 100.0;
 
     public GameManager(Main main) {
         this.main = main;
@@ -87,13 +98,12 @@ public class GameManager {
     }
 
     public void addTeam(Player p) {
-        if (gameScoreboard == null) {
-            // No match has ever started on this server (e.g. debug/practice mode) - there
-            // are no teams to assign to, just give the player a kit and drop them in the map.
-            setup(p);
-            giveLeaveItem(p);
-            main.send(p, "Use /ctc kit to select your kit!", ChatColor.AQUA);
-            return;
+        boolean practice = gameScoreboard == null;
+        if (practice && practiceScoreboard == null) {
+            // First player to ever need a team on this server - stand up the practice
+            // scoreboard lazily (real matches build gameScoreboard the same way in start()).
+            practiceScoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+            register(practiceScoreboard);
         }
 
         String name = p.getName();
@@ -109,7 +119,14 @@ public class GameManager {
             getRed().addEntry(name);
             Bukkit.getLogger().info("Player " + name + " added to Red team.");
         }
-        main.getStats().recordGamePlayed(p);
+
+        if (practice) {
+            giveLeaveItem(p);
+            giveKitClock(p);
+            main.send(p, "Use /ctc kit to select your kit!", ChatColor.AQUA);
+        } else {
+            main.getStats().recordGamePlayed(p);
+        }
         setup(p);
     }
     // In GameManager.java
@@ -305,10 +322,10 @@ public class GameManager {
     }
 
     private void setup(Player p) {
-        // gameScoreboard only exists once a real match has start()'d - in practice/debug
-        // mode there's no scoreboard to assign, and setScoreboard(null) throws.
-        if (gameScoreboard != null) {
-            p.setScoreboard(gameScoreboard);
+        // setScoreboard(null) throws, so only assign if a match or practice scoreboard exists.
+        Scoreboard board = activeScoreboard();
+        if (board != null) {
+            p.setScoreboard(board);
         }
         teleportSpawn(p);
         AttributeInstance attribute = p.getAttribute(Attribute.MAX_HEALTH);
@@ -522,12 +539,13 @@ public class GameManager {
             return false;
         }
 
-        if (!main.game.started) { // change conditions to make testing outside matches possible
+        if (getRed() == null && getBlue() == null) {
+            // No match or practice teams active at all - fall back to manually-set /team
+            // entries on the main scoreboard so friendly-fire logic can still be tested
+            // standalone (e.g. on a bare dev server).
             Scoreboard score = Bukkit.getScoreboardManager().getMainScoreboard();
             String p1Team = "1";
             String p2Team = "2";
-
-            boolean sameTeam;
 
             for (Team team : score.getTeams()) {
                 if (team.hasEntry(p1.getName())) {
@@ -538,11 +556,8 @@ public class GameManager {
                 }
             }
 
-            sameTeam = p1Team.equals(p2Team);
-
-            return sameTeam;
+            return p1Team.equals(p2Team);
         }
-
 
         // both on red?
         boolean bothRed = getRed() != null
@@ -776,7 +791,9 @@ public class GameManager {
     }
 
     public boolean redHas(Player p) {
-        if (main.game != null && !main.game.started) { // change conditions to make testing outside matches possible
+        if (getRed() == null && getBlue() == null) {
+            // No match or practice teams active - fall back to manually-set /team entries
+            // on the main scoreboard (bare dev/testing server).
             Scoreboard score = Bukkit.getScoreboardManager().getMainScoreboard();
 
             for (Team team : score.getTeams()) {
@@ -792,7 +809,7 @@ public class GameManager {
     }
 
     public boolean blueHas(Player p) {
-        if (main.game != null && !main.game.started) { // change conditions to make testing outside matches possible
+        if (getRed() == null && getBlue() == null) {
             Scoreboard score = Bukkit.getScoreboardManager().getMainScoreboard();
 
             for (Team team : score.getTeams()) {
@@ -807,12 +824,20 @@ public class GameManager {
         return getBlue() != null && getBlue().hasEntry(p.getName());
     }
 
+    // Whichever scoreboard is actually holding teams right now - the real match's if one is
+    // running, otherwise practice's. Never both: a server only ever has one or the other.
+    private Scoreboard activeScoreboard() {
+        return gameScoreboard != null ? gameScoreboard : practiceScoreboard;
+    }
+
     public Team getRed() {
-        return gameScoreboard != null ? gameScoreboard.getTeam("red") : null;
+        Scoreboard board = activeScoreboard();
+        return board != null ? board.getTeam(RED_TEAM_NAME) : null;
     }
 
     public Team getBlue() {
-        return gameScoreboard != null ? gameScoreboard.getTeam("blue") : null;
+        Scoreboard board = activeScoreboard();
+        return board != null ? board.getTeam(BLUE_TEAM_NAME) : null;
     }
 
     public void clean() {
@@ -843,7 +868,10 @@ public class GameManager {
     public static final String BLUE_TEAM_NAME = "blue";
 
     public void register() {
-        Scoreboard board = gameScoreboard;
+        register(gameScoreboard);
+    }
+
+    public void register(Scoreboard board) {
         red = board.getTeam(RED_TEAM_NAME);
         blue = board.getTeam(BLUE_TEAM_NAME);
 
@@ -879,13 +907,18 @@ public class GameManager {
     }
 
     public void teleportSpawn(Player p) {
+        if (!started) {
+            // Practice mode: players are on a balanced red/blue team (see addTeam) for
+            // colors/friendly-fire/stats, but there's no real match with fixed bases here -
+            // everyone scatters within the (small) practice arena instead.
+            p.teleport(randomMapSpawn());
+            return;
+        }
         if (redHas(p)) {
             p.teleport(world.getRed());
         } else if (blueHas(p)) {
             p.teleport(world.getBlue());
         } else {
-            // No team (practice/FFA mode - a real match always assigns red or blue before
-            // this runs) - scatter spawns randomly within the map's world border instead.
             p.teleport(randomMapSpawn());
         }
     }
@@ -893,9 +926,8 @@ public class GameManager {
     /**
      * Picks a random, safe (on-top-of-terrain) location within the "map" world's current
      * world border. Used for free-for-all spawns/respawns where there's no fixed team spawn.
-     * Respects whatever border size/center is already baked into that world - set one when
-     * building the map, otherwise this will scatter across the full (likely mostly empty)
-     * default border.
+     * On the practice server, the border is first clamped down to PRACTICE_BORDER_SIZE so
+     * spawns stay clustered even on maps that bake in a huge (or no) border.
      */
     public Location randomMapSpawn() {
         World mapWorld = Bukkit.getWorld("map");
@@ -904,6 +936,11 @@ public class GameManager {
         }
 
         WorldBorder border = mapWorld.getWorldBorder();
+        if (serverName.equalsIgnoreCase("practice") && border.getSize() > PRACTICE_BORDER_SIZE) {
+            border.setCenter(border.getCenter());
+            border.setSize(PRACTICE_BORDER_SIZE);
+        }
+
         Location center = border.getCenter();
         double halfSize = border.getSize() / 2.0;
         double range = Math.max(halfSize - Math.min(halfSize * 0.15, 10), 1);
@@ -939,6 +976,30 @@ public class GameManager {
         if (item == null || item.getType() != Material.CLOCK || !item.hasItemMeta()) return false;
         return item.getItemMeta().getPersistentDataContainer()
                 .has(new NamespacedKey(main, LEAVE_ITEM_KEY), PersistentDataType.BYTE);
+    }
+
+    public static final String KIT_ITEM_KEY = "kit_item";
+
+    /**
+     * Gives the practice-mode "SELECT KIT" clock (one slot left of LEAVE). Right-clicking it
+     * just calls kit.openMenu(p), the same thing /ctc kit does - saves practice players from
+     * having to type the command every time they want to switch kits.
+     */
+    public void giveKitClock(Player p) {
+        ItemStack clock = new ItemStack(Material.CLOCK);
+        ItemMeta meta = clock.getItemMeta();
+        meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "SELECT KIT");
+        meta.setLore(List.of(ChatColor.GRAY + "Right-click to open the kit menu"));
+        meta.getPersistentDataContainer().set(
+                new NamespacedKey(main, KIT_ITEM_KEY), PersistentDataType.BYTE, (byte) 1);
+        clock.setItemMeta(meta);
+        p.getInventory().setItem(7, clock);
+    }
+
+    public boolean isKitItem(ItemStack item) {
+        if (item == null || item.getType() != Material.CLOCK || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer()
+                .has(new NamespacedKey(main, KIT_ITEM_KEY), PersistentDataType.BYTE);
     }
 
     public void sendToLobby(Player p) {
